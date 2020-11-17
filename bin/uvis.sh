@@ -12,16 +12,32 @@
 #-----------------------------------------------------------------------------
 # Versions:
 # v3.00: initial version, from DR4 processing                      (22.nov.19)
+# v3.01: updated up to conv. to WIRCAM, and more                   (29.nov.19)
+# v3.02: updates for qFits pscamp, and more                        (21.oct.20)
 ##-----------------------------------------------------------------------------
 set -u  # exit if a variable is not defined - recommended by Stephane
+
+if [ $# -eq 0 ]; then # || [ $1 == 'help' ] || [ $1 == '-h' ]; then 
+    echo "#-----------------------------------------------------------------------------"
+    echo "This script is  "$(which $0)" to process UltraVista data"
+    echo "#-----------------------------------------------------------------------------"
+    echo "| Syntax: "
+    echo "| - pipe step [auto]  begin at step pN of the processing; "
+    echo "|                     if auto is given, then continue automatically "
+    echo "| - pipe -h or help    print this help "
+    echo "#-----------------------------------------------------------------------------"
+    exit 0
+fi 
 
 if [[ "${@: -1}" =~ 'dry' ]] || [ "${@: -1}" == 'test' ]; then dry=T; else dry=F; fi
 if [[ "${@: -1}" =~ 'aut' ]]; then auto=T; else auto=F; fi
 if [[ "${@: -1}" =~ 'int' ]]; then int=T;  else int=F;  fi
+if [[ "${@: -1}" =~ 'env' ]]; then dry=T; fi
 
 #-----------------------------------------------------------------------------
 
-vers="3.00 (22.nov.19)"
+#vers="3.02 (21.oct.20)"
+vers=$(grep '^# v3.' $0 | tail -1 | cut -c 4-7,67-79)
 if [ $# -eq 0 ]; then
     echo "# SYNTAX:"
     echo "    uvis.sh option (dry or auto)"
@@ -36,27 +52,13 @@ else
     fi 
 fi
 
-
 module() { eval $(/usr/bin/modulecmd bash $*); }
 module purge ; module load intelpython/3-2019.4 cfitsio
+export LD_LIBRARY_PATH=/lib64:${LD_LIBRARY_PATH}
 
-
-#-----------------------------------------------------------------------------
-# To do or not to do ... that is the question
-#-----------------------------------------------------------------------------
-# - need to use calib dir?  probably not, but it works ... leave as is for now
-# - possibly define error codes
-#
-# - dc and bc commands not installed; dthr=$(echo "2 k  $dt 3600 / p" | dc) 
-#   or dthr=$(echo "scale=2; $dt/3600" | bc) replaced by
-#   dthr=$(echo "$dt 3600" | awk '{printf "%0.2f\n", $1/$2}')
-#
 #-----------------------------------------------------------------------------
 # Some variables
 #-----------------------------------------------------------------------------
-
-auto=F; pauto=F  # automatic: proceed automatically to next process
-int=0             # interactive ... barely implemented
 
 uvis=/home/moneti/softs/uvis-pipe
 
@@ -64,8 +66,24 @@ bindir=$uvis/bin
 pydir=$uvis/python
 confdir=$uvis/config
 
-if [ -h $0 ]; then pn=$(readlink -f $0); else pn=$(ls $0); fi    # get the command line
-sdate=$(date "+%h%d@%H%M") 
+if [ -z ${WRK+x} ]; then 
+	echo "!! ERROR: must export WRK variable before starting" ; exit 2; 
+else
+	FILTER=$(echo $WRK | cut -d/ -f5)
+fi
+
+node=$(echo $WRK | cut -c 2-4)
+DR5=$(echo $WRK  | cut -d/ -f1-4)
+
+REL="DR5-"$FILTER                      # used in names of some products
+
+badfiles=$WRK/DiscardedFiles.list      # built and appended to during processing
+fileinfo=$WRK/FileInfo.dat             # lists assoc files (bpm, sky, flat) and other info for each image
+
+pipelog=${WRK}/uvis.log ; if [ ! -e $pipelog ]; then touch $pipelog; fi
+Trash=zRejected         ; if [ ! -d $Trash ]; then mkdir $Trash; fi
+
+#if [ -h $0 ]; then pn=$(readlink -f $0); else pn=$(ls $0); fi    # get the command line
 
 #-----------------------------------------------------------------------------
 # Functions
@@ -89,14 +107,15 @@ mycd() {
     if [ -d $1 ]; then \cd $1; ec " --> $PWD"; 
     else echo "!! ERROR: $1 does not exit ... quitting"; exit 5; fi
 }
+
 imdir=${WRK}/images
 curfiles() {   # list avaliable files for each frame
     if [ -d $WRK/images ]; then 
-        nimages=$(ls -1 $WRK/images/v20*_00???.fits 2> /dev/null | wc -l) #;  echo $nimages
+        nimages=$(ls -1 $WRK/images/v20*_0????.fits 2> /dev/null | wc -l) #;  echo $nimages
         if [ $nimages -eq 0 ]; then
             echo " ---------- Dirs still empty ---------- "
         else
-            froot=$(cd $WRK ; ls images/v20*_00???.fits | head -$(($nimages / 2)) | tail -1 | cut -d\. -f1 | cut -d\/ -f2 )
+            froot=$(cd $WRK ; ls images/v20*_0????.fits | head -$(($nimages / 2)) | tail -1 | cut -d\. -f1 | cut -d\/ -f2 )
             echo "#-------------------------------------------------------------------------------------------- "
             echo "# Found $nimages files like $froot in $PWD: " 
             echo "#-------------------------------------------------------------------------------------------- "
@@ -127,43 +146,31 @@ askuser() {   # ask user if ok to continue
     done  
 }
 
-relcheck() {   # Print some parameters for user to check
+procenv() {   # Print some parameters for user to check
     echo "#-----------------------------------------------------------------------------"
     echo "# Processing environment: "
-    if [ $nofilt -eq 1 ]; then 
-        echo "  - Filter is       NOT SET!!"; else echo "  - Filter is         "$FILTER; fi
-    if [ -z ${WRK+x} ]; then
-        echo "  - Release tag is  NOT SET!!"; else echo "  - Release tag is    "$REL; fi
-    echo "  - Working area is   "$WRK
-    echo "  - python scripts in "$pydir
-    echo "  - config files in   "$confdir
-    echo "  - pipe logfile is   "$(ls $pipelog )
-    echo "  - Found images dir with "$nimages" image .fits files"
-#   echo "  - PYTHONPATH is     "$PYTHONPATH 
-#   echo "  - linux PATH is     "$PATH 
+    echo "  - Release area is   "$(ls -d $DR5)
+    echo "  - Working area is   "$(ls -d $WRK)" for Filter is "$FILTER
+    echo "  - shell scripts in  "$(ls -d $bindir)
+    echo "  - python scripts in "$(ls -d $pydir)
+    echo "  - config files in   "$(ls -d $confdir)
+    echo "  - pipe logfile is   "$(ls $pipelog)
+    echo "  - Release tag is    "$REL
+    echo "  - Found images directory with "$nimages" image files"
     echo "#-----------------------------------------------------------------------------"  
 }
 
 erract() { # what to do in case of error
     echo ""
     ec "!!! PROBLEM "; tail $logfile
-#   ec "# Linux PATH is: $PATH"
-#   ec "# PYTHONPATH is: $PYTHONPATH"
     exit 5
 }
-testmsg() {
-    echo ""
-    ec "#############################################################################"
-    ec "#                                                                           #"
-    ec "##  Begin pred $pn in test mode  ##"
-    ec "#                                                                           #"
-    ec "#############################################################################"
-}
-help() {
-    egrep -n '^elif' $0 | tr -s ' ' | grep -v ' : ' > t1
+
+pipehelp() {
+    egrep -n '^elif' $0  | tr -s ' ' | grep -v ' : ' > t1
     egrep -n '## - R' $0 | tr -s ' ' | grep -v egrep > t2
-    egrep -n '^#@@' $0 | tr -d '@' > t3  
-    cat t1 t2 t3 | sort -k1 -n | tr -s '#' | cut -d \# -f2
+    egrep -n '^#@@' $0   | tr -d '@' > t3  
+    cat t1 t2 t3 | sort -nk1,1 | tr -s '#' | cut -d \# -f2
     rm t1 t2 t3
 }
 #-----------------------------------------------------------------------------
@@ -180,69 +187,14 @@ if [ $# -eq 8 ]; then
     echo "#-----------------------------------------------------------------------------"
 fi
 
-if [ -z ${WRK+x} ]; then echo "!! ERROR: must export WRK variable before starting" ; exit 2; fi
-
-if [ -z ${FILTER+x} ]; then 
-    echo "WARNING: FILTER variable not set" ; nofilt=1
-else
-    nofilt=0
-    case  $FILTER in
-        N | NB118 ) FILTER=NB118 ;;
-        Y       ) FILTER=$FILTER ;;
-        J       ) FILTER=$FILTER ;;
-        H       ) FILTER=$FILTER ;;
-        K | Ks  ) FILTER=Ks      ;;
-        P       ) FILTER=$FILTER ;; # a bogus N filter for test purposes
-        Q       ) FILTER=$FILTER ;; # a bogus Y filter for test purposes
-        R       ) FILTER=$FILTER ;; # a bogus J filter for test purposes
-        S       ) FILTER=$FILTER ;; # a bogus H filter for test purposes
-        T       ) FILTER=$FILTER ;; # a bogus K filter for test purposes
-        *          ) ec "# ERROR: invalid filter $FILTER"; exit 3 ;;
-    esac
-    pipelog="${WRK}/uvis.log" 
-fi
-# echo "## debug: \FILTER: $FILTER   \$FILTER: $FILTER" ; exit
-if [ ! -e $pipelog ]; then touch $pipelog; fi
-
-if [ $# -eq 0 ] || [ $1 = 'help' ] || [ $1 = '-h' ]; then 
-    echo "#-----------------------------------------------------------------------------"
-    ec "This script is  "$(which $0)" to process UltraVista data"
-    echo "#-----------------------------------------------------------------------------"
-    echo "| Syntax: "
-    echo "| - pipe step [auto]  begin at step pN of the processing; "
-    echo "|                     if auto is given, then continue automatically "
-    echo "| - pipe -h or help    print this help "
-    echo "#-----------------------------------------------------------------------------"
-    help
-    exit 0
-fi 
-
-# exec nodes
-case $FILTER in
-    NB118 | J | H ) node=n08 ;;
-    Y | Ks        ) node=n09 ;;
-    P | R | S     ) node=n08 ;;   # test on n08
-    Q | T         ) node=n09 ;;   # test on n09
-esac
-
-# current node
-node=$(pwd | cut -c 2-4)
-
-#root="subima"                         # root name for swarp subimages
-REL="DR4-"$FILTER                      # used in names of some products
-
-badfiles=$WRK/DiscardedFiles.list      # built and appended to during processing
-fileinfo=$WRK/FileInfo.dat             # lists assoc files (bpm, sky, flat) and other info for each image
-Trash=Rejected                         # in images
-RunTimes=$WRK/RunTimes.log
-
 if [ ! -e $WRK/images/list_images ]; then 
     cd $WRK/images
     echo "list_images not found - rebuild it ...."
-    \ls -1 v20*_00???.fits > list_images
+    \ls -1 v20*_0????.fits > list_images
     ls -l $WRK/images/list_images
     cd $WRK
 fi
+
 
 nimages=$(cat $WRK/images/list_images | wc -l)
 imroot=$(head -$(($nimages / 2))  $WRK/images/list_images | tail -1 | cut -d\. -f1 | cut -d\/ -f2 )
@@ -270,14 +222,9 @@ if [ $# -ge 1 ] && [ $1 = 'xxx' ]; then
 #@@ ------------------------------------------------------------------------------------
 
 #-----------------------------------------------------------------------------------------------
-elif [[ $1 =~ 'prelim' ]]; then      # P0: link fit files to WRK area, decompress, build casuinfo table
+elif [[ $1 =~ 'prel' ]]; then      # prelim: count, decompress, build rejected list
 #-----------------------------------------------------------------------------------------------
    
-#    ec "#-----------------------------------------------------------------------------"
-#    ec "## P0: Prepare CASU files"
-#    ec "#-----------------------------------------------------------------------------"
-#    exit 0
- 
     ncurr=0 ; pcurr="p$ncurr" ; pnext="p$(($ncurr+1))"
     mycd $WRK
     
@@ -285,49 +232,53 @@ elif [[ $1 =~ 'prelim' ]]; then      # P0: link fit files to WRK area, decompres
     ec "##          ======  Preliminaries  ======"
     ec "##----------------------------------------------------------------------------"
     
-    ec " - Number of casu files in images:  $(ls -1 images/*.fit  | wc -l) "
-    ec " - Number of casu files in stacks:  $(ls -1 stacks/*.fit  | wc -l) "
-    ec " - Number of casu files in calib:   $(ls -1 calib/*.fit   | wc -l) "
- 
-    ec "#-----------------------------------------------------------------------------"
-    ec "##-R0/ Remove known bad images and build info table"
-    ec "#-----------------------------------------------------------------------------"
-
-    #_# # ---------------------- remove bad data graded C in DR1; if there.  
-    #_# mycd $WRK/images
-    #_# grep ",C," $confdir/DR1_file_info.txt | grep $FILTER > LocalBadFiles.list
-    #_# nbad=$(cat LocalBadFiles.list | wc -l)
-    #_# if [ $nbad -ne 0 ]; then
-    #_#     count=0
-    #_#     for f in $(cut -d\, -f1 LocalBadFiles.list); do 
-    #_#         if [ -e ${f}.fit ]; then 
-    #_#             if [ $count -eq 0 ]; then echo "Files graded C in DR1" > $badfiles; fi
-    #_#             rm ${f}.fit; echo "- ${f}.fit" >> $badfiles
-    #_#             count=$(($count+1))
-    #_#         fi
-    #_#     done
-    #_#     if [ $count -ne 0 ]; then ec "# Deleted $count files graded C in DR1; list in \$WRK/DiscardedFiles.list "
-    #_#     else ec "# No C-graded files found ...";  fi
-    #_# fi
-    #_# rm LocalBadFiles.list
-    #_# mycd $WRK
- 
-    ec "#-----------------------------------------------------------------------------"
-    ec "##- decompress CASU files"
-    ec "#-----------------------------------------------------------------------------"
-    
-    \ls -1 [i,c,s]*/*.fit | awk '{print "imcopy ",$1, $1"s"}' > to_imcopy
-	if [ $dry == 'T' ]; then 
-		ec " >> wrote to_imcopy to run inparallel mode"
-		ec "----  EXITING PIPELINE DRY MODE         ---- "
-		exit 10
+	nfit=$(ls -1 images/*.fit 2> /dev/null | wc -l)
+	if [ $nfit -gt 10 ]; then
+		ec " - Number of casu files in images:  $nfit "
+		ec " - Number of casu files in stacks:  $(ls -1 stacks/*.fit  | wc -l) "
+		ec " - Number of casu files in calib:   $(ls -1 calib/*.fit   | wc -l) "
+	fi
+#
+# NB. No data rejection at this stage for DR5 - keep all frame for use in building sky; 
+# BUT do not use these frame to build stack
+#
+	if [ ! -s reject_for_stack.lst ]; then 
+		ec "#-----------------------------------------------------------------------------"
+		ec "##-R0: Build lists of images rejected in DR1,4 - to exclude them from P1 stack"
+		ec "#-----------------------------------------------------------------------------"
+		
+		grep $FILTER $DR5/DR1_rejected.lst | cut -d\, -f1 > rejected_dr1.lst
+		grep $FILTER $DR5/DR4_badPSF.lst   | cut -d\  -f1 > rejected_dr4.lst
+		nbad=$(cat rejected_dr?.lst | wc -l)
+		ec "# Found $nbad files to reject (later) from DR1 and DR4"
+		cat rejected_dr?.lst | sort -u | awk '{print $1".fits"}' > reject_for_stack.lst
+		nn=$(cat reject_for_stack.lst | wc -l)
+		ec "# - built rejected_dr[1,4].lst and reject_for_stack.lst with $nn files"
+	else
+		echo "## lists of images to discard already available - continue"
 	fi
 
-	cat to_imcopy | parallel  -j 8
-	mkdir raw
-	mv [i,c,s]*/*.fit to_imcopy raw
-	ec "# All .fit files decompressed to .fits, then moved to raw dir"
+	if [ ! -e to_imcopy ]; then
+		ec "#-----------------------------------------------------------------------------"
+		ec "##- R2: decompress CASU files"
+		ec "#-----------------------------------------------------------------------------"
     
+		\ls -1 [i,c,s]*/*.fit | awk '{print "imcopy ",$1, $1"s"}' > to_imcopy
+		if [ $dry == 'T' ]; then 
+			ec " >> wrote to_imcopy to run inparallel mode"
+			ec "----  EXITING PIPELINE DRY MODE         ---- "
+			exit 10
+		fi
+
+		cat to_imcopy | parallel  -j 8
+		mkdir $WRK/RawData/$FILTER
+		mv [i,c,s]*/*.fit $WRK/RawData/FILT
+		ec "# All .fit files decompressed to .fits, then moved to RawData/$FILT dir"
+		chmod 444 to_imcopy    # serves as record that decompression has been done.
+	else
+		echo "## Decompression already done"
+    fi
+
     #-----------------------------------------------------------------------------
     
     if [ $auto == 'T' ]; then                                 # END P0
@@ -341,21 +292,15 @@ elif [[ $1 =~ 'prelim' ]]; then      # P0: link fit files to WRK area, decompres
         ec "#-----------------------------------------------------------------------------"
     fi
  
-exit
 #-----------------------------------------------------------------------------------------------
-#elif [ $1 = 'p0' ]; then      # P0: link Converted data (not fully implemented)
+elif [[ $1 =~ 'setu' ]]; then      # setup: to build test areas ... NOT IMPLEMENTED
 #-----------------------------------------------------------------------------------------------
    
-    if [ $dry != 'T' ]; then cppipe; else testmsg; fi
-    ncurr=0 ; pcurr="p$ncurr" ; pnext="p$(($ncurr+1))"
- 
-    case $FILTER in
-        NB118 | J | H ) bpmdir='/n08data/UltraVista/DR4/bpms'
-                        rootdir="/n08data/UltraVista/ConvertedData/$FILTER" ;;
-        Y | Ks        ) bpmdir='/n09data/UltraVista/DR4/bpms'   
-                        rootdir="/n09data/UltraVista/ConvertedData/$FILTER" ;;
-        * ) ec "# Unknown filter - quitting"; exit 5 ;;
-    esac
+	bpmdir='$DR5/bpms'
+	rootdir=${WRK%/$FILTER}"/RawData/$FILTER" 
+
+	echo "## CASU data (.fit files) in $rootdir"
+	exit 0
 
     cd $WRK
     if [ ! -d images ]; then 
@@ -367,22 +312,22 @@ exit
         ec "## P0: Prepare converted data files"
         ec "#-----------------------------------------------------------------------------"
 
-        mkdir images calib #stacks 
-        ln -sf $rootdir/images/v20*_00???.fits   images
+        mkdir images calib stacks 
+        ln -sf $rootdir/images/v20*_0????.fits   images
 #       ln -s $rootdir/stacks/*.fits    stacks  
         ln -sf $rootdir/calib/*.fits     calib   
         ln -sf $bpmdir/bpm*.fits        calib   # some were already in calib
         cp $rootdir/FileInfo.dat  FileInfo.full
 
         cd images
-        \ls -1 v20*_00???.fits > list_images; nimages=$(cat list_images | wc -l)
+        \ls -1 v20*_0????.fits > list_images; nimages=$(cat list_images | wc -l)
         for f in v20*.fits; do grep $f ../FileInfo.full >> ../FileInfo.dat; done
         #echo HERE
         cd -
         ec "#-----------------------------------------------------------------------------"
         ec "## - built links to $nimages ${FILTER} images and their ancillary flats and skies:  "
         ec "#-----------------------------------------------------------------------------"
-        ec " - Number of images files:      $(ls -1L images/v20*_00???.fits | wc -l) "
+        ec " - Number of images files:      $(ls -1L images/v20*_0????.fits | wc -l) "
         ec " - Number paws included:        $(cut -d' ' -f2,2 FileInfo.dat | sort -u | wc -l) "
         ec " - Number of flats in calib:    $(ls -1L calib/${FILTER}*[0-9].fits     | wc -l) "
         ec " - Normalised flats in calib:   $(ls -1L calib/${FILTER}*norm.fits      | wc -l) "
@@ -399,11 +344,11 @@ exit
         exit 0
     fi
 
-if [ $HOSTNAME != "candid01.iap.fr" ]  && [ $dry -eq 0 ]; then  
+if ([ $HOSTNAME != "candid01.iap.fr" ] || [ $HOSTNAME != "c02.iap.fr" ]) && [ $dry != 'T' ]; then  
     ec "#=========================================================#"
     ec "# ATTN: cannot start jobs from $HOSTNAME. Switched to dry mode  #"
     ec "#=========================================================#"
-    dry=1
+    dry='T'
 fi
 
 #-----------------------------------------------------------------------------------------------
@@ -411,105 +356,182 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
 #-----------------------------------------------------------------------------------------------
 
 #% P1: convert to WIRCam, fix flats, qFits, flag satur'n in ldacs
-#% - convert various kwds to WIRCam (terapix) format
+#% - convert various kwds to WIRCam (terapix) format:
+#%   for each v20*_0????.fits file write a _WIRCam.fits file
+#%   move the original .fits files to DR5/ConvData/$FILT/
+#%   rename the WIRCam file to remove _WIRCam from the name
 #% - convert kwds in flats, and produce normalised flags
 #% - qFits:
 #%   . builds weight files, 
 #%   . builds ldacs for psfex and runs psfex to get psf size and reject files with bad psf
 #%   . builds an ldac for use with scamp
-#% - determine saturation level from the scamp ldacs and flag saturated sources
+#%   . determine saturation level from the scamp ldacs and flag saturated sources
+#% - select frames based on PSF size
 #%------------------------------------------------------------------
 
-    if [ $dry -eq 0 ]; then cppipe; else testmsg; fi
     ec "#-----------------------------------------------------------------------------"
     ec "## P1: convert to WIRCam, fix flats, pseudo-qFits, and flag saturation in ldacs"
     ec "#-----------------------------------------------------------------------------"
     ncurr=1 ; pcurr="p$ncurr" ; pprev=p$(($ncurr-1)) ; pnext="p$(($ncurr+1))"
  
-    if [ ! -d$WRK/images ]; then ec "PROBLEM: directory structure not setup ... quitting";  exit 5; fi
+    if [ ! -d $WRK/images ]; then 
+		ec "PROBLEM: directory structure not setup ... quitting"
+		exit 5
+	fi
     mycd $WRK/images
+
+	# rebuild list_images
+	#ls -1 v20*_0????.fits > list_images
+	nimages=$(cat list_images | wc -l)
+
+    if [ $nimages -eq 0 ]; then 
+		ec "!! ERROR: no images found ... "
+		askuser
+	fi
         
     ec "CHECK: found list_images with $nimages entries "
     ec "#-----------------------------------------------------------------------------"
 
+	# check for existing _WIRCam files
+	nwirc=$(ls v20*_WIRCam.fits 2> /dev/null | wc -l)
+	if [ $nwirc -gt 0 ]; then
+		ec "### ATTN: ###  found $nwirc _WIRCam files ... delete them and start over"
+		exit 0
+	fi
+        
     # to check conv to WIRCam, look for IMRED_FF and IMRED_MK kwds exist in ext.16
-    nkwds=$(dfits -x 16 $(tail -1 list_images) | grep IMRED_ | wc -l) #; echo $nkwds
+    nkwds=$(dfits -x 16 origs/$(tail -1 list_images) | grep IMRED_ | wc -l) #; echo $nkwds
  
-    ###################### ATTN: not yet qsub'd ######################
+    # still in $WRK/images; shell scripts ==> $WRK
 
-    if [ -e convert_to_WIRCAM.log ] && [ $nkwds -eq 2 ]; then
+    if [ -e convert_to_wircam.log ] && [ $nkwds -eq 2 ]; then
         ec "CHECK: found convert_images.log, and files seem to contain IMRED_?? keywds"
         ec "CHECK: ==> conversion to WIRCam already done ... skip it"
         ec "#-----------------------------------------------------------------------------"
     else
         rcurr=R3
-        if [ $dry == 'T' ]; then ec "====> Ready for $rcurr: conv to WIRCam on $nimages images"; exit 5; fi
         ec "#-----------------------------------------------------------------------------"
         ec "## - R3/ convert $nimages images to WIRCam format (keyword conversion)"
         ec "#-----------------------------------------------------------------------------"
         
-        if [ $nimages -eq 0 ]; then ec "!! ERROR: no images found. "; askuser; fi
-        
-        exec="$pydir/convert_images.py"  ; ec "# exec is: $exec"
-        args=" -s ../stacks/ --stack_addzp=Convert_keys.list"
-        logfile=convert_full.log
-        
-        cp -a $confdir/Convert_keys.list . 
-        
-        python2 $exec -l list_images $args > $logfile 2>&1 
-        if [ $? -ne 0 ]; then erract ; fi
- 
-        grep -v -e Impossible -e non-existing -e VerifyWarn $logfile > convert_short.log
-        rm convert_full.log
-        rm v20*_00???.fits                             # delete original CASU files
-        rename _WIRCam.fits .fits v20*WIRCam.fits           # rename them to 'simple' names
- 
+		rm -f chunk_?.lst ../convert_all
+		chunk_size=2500
+		if [ $nimages -gt $chunk_size ]; then 
+			split -n l/$(($nimages/$chunk_size)) -a1 --additional-suffix='.lst' list_images chunk_ 
+		else
+			cp list_images chunk_a.lst
+		fi
+
+		for l in chunk_?.lst; do
+			nl=$(cat $l | wc -l)
+			id=$(echo $l | cut -d\_ -f2 | cut -d\. -f1) 
+			qfile=$WRK/convert_$id.sh
+			sed -e 's|@WRK@|'$WRK'|' -e 's|@FILTER@|'$FILTER'|'  -e 's|@ID@|'$id'|'  \
+				-e 's|@LIST@|'$l'|'  -e 's|@NODE@|'$node'|'  -e 's|@DRY@|0|' \
+				$bindir/pconvert.sh > $qfile            
+				ec "# Built $qfile with $nl entries"
+            echo "qsub $qfile" >> $WRK/convert_all
+        done   
+
+		mycd $WRK    ### back to $WRK to run jobs
+		njobs=$(cat convert_all 2> /dev/null | wc -l)
+		
+		ec "# ==> written to file 'convert_all' with $njobs entries "
         ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+
+        if [ $dry == 'T' ]; then 
+			echo "   >> DRY MODE ... do nothing  << "
+			exit 3
+		else 
+            rm -f pconv_?.out                    # clean up before submitting:
+		    ln -sf $confdir/Convert_keys.list images/.   # Need this confi file
+		    
+            ec "# Submit qsub files ... ";  source convert_all >> $pipelog
+		    ec '# Begin wait loop -- wait for $njobs convert jobs to finish  --'
+            btime=$(date "+%s.%N"); sleep 60     # before starting wait loop
+            while :; do                          # qsub wait loop for destripe
+		    	ndone=$(ls pconv_?.out 2> /dev/null | wc -l)
+                [ $njobs -eq $ndone ] && break          # jobs finished
+                sleep 60
+            done  
+		    ec "# convert jobs finished, walltime: $(wtime) - check results ..."
+		    npb=$(grep PROBLEM pconv_?.out | wc -l)
+		    if [ $npb -ne 0 ]; then
+		    	ec "## PROBLEM ## problem(s) found in .out files ... please check"
+		    	grep PROBLEM pconv_?.out
+		    	askuser
+		    else
+		    	ec "## All scripts terminated successfully ..."
+		    fi
+		    
+		    mycd $WRK/images   # back here to check products
+		    # check for existing _WIRCam files
+		    nwirc=$(ls v20*_WIRCam.fits 2> /dev/null | wc -l)
+		    if [ $nwirc -ne $nimages ]; then
+		    	echo "### ATTN: ###  found only $nwirc _WIRCam files for $nimages expected. "
+		    	askuser
+		    fi
+		    
+		    exit 0
+		    cat conv_wircam_?.log | grep -v ^# > convert_to_wircam.log
+		    chmod 444 convert_to_wircam.log
+		    rm convert_full_?.log conv_wircam_?.log 
+		    #mv v20*_0????.fits ../../ConvData/$FILTER          # delete original CASU files
+		    rm v20*_0????.fits                                  # delete links to CASU files
+		    rename _WIRCam.fits .fits v20*_WIRCam.fits          # rename them to 'simple' names
+		    
+            ec "#-----------------------------------------------------------------------------"
+		fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
- 
+
     #----------------------------------------------------------------------------------------------#
  
     mycd $WRK/calib
  
-    ###################### ATTN: not yet qsub'd ######################
- 
-    \ls -1 *_flat_*.fits | grep -v norm > list_flats  ; nflats=$(cat list_flats | wc -l)
-    nfnorm=$(ls *_flat_*_norm.fits 2> /dev/null | wc -l)    #;   echo $nfnorm $nflats
-    # check if flats already handled already done, if so skip to next step
-    #echo $nfnorm $nflats  ;  ls norm_flat.log
-    if [ -e norm_flat.log ] && [ $nfnorm -eq $nflats ]; then
+    \ls -1 *_flat_*.fits | grep -v norm > list_flats  
+	nl=$(cat list_flats | wc -l)
+    nf=$(ls *_flat_*_norm.fits 2> /dev/null | wc -l)    #;   echo $nl $nf
+
+    if [ -e norm_flats.log ] && [ $nf -eq $nl ]; then
         ec "CHECK: found norm_flat.log and normalised flats ... "
         ec "CHECK: ==> flat handling already done ... skip it"
         ec "#-----------------------------------------------------------------------------"
     else
         rcurr=R4
-        if [ $dry == 'T' ]; then ec "====> Ready for $rcurr: rm PV from headers of flats"; exit 5; fi
         ec "#-----------------------------------------------------------------------------"
         ec "## - R4/ on flats: remove PV from the headers and normalise" 
         ec "#-----------------------------------------------------------------------------"
  
-        exec="$pydir/convert_flats.py"  ; ec "# exec is: $exec"
-        args=" --verbosity=INFO --log=clean_flats_int.log"
-        logfile="clean_flats.log"
-       
-        if [ $nflats -eq 0 ]; then ec "!! ERROR: no flats found. "; askuser; fi
-       ## ATTN: build run-file and run with parallel -j ???
-        python $exec -l list_flats $args > $logfile 2>&1 
-        if [ $? -ne 0 ]; then erract; fi
-        
-        exec="$pydir/norm_flats.py"  ; ec "# exec is: $exec"
-        logfile="norm_flats.log"
- 
-        rename  _noPV.fits .fits ${FILTER}_flat*noPV.fits
-        python $exec -l list_flats > $logfile 2>&1 
-        if [ $? -ne 0 ]; then erract; fi
-        ec "# Flat handing completed: 'PV' removed from headers and normalised"
+		module=pfixFlats.sh
+		qfile=$WRK/$module
+		sed -e 's|@WRK@|'$WRK'|' -e 's|@FILTER@|'$FILTER'|' \
+			-e 's|@LIST@|list_flats|'  -e 's|@NODE@|'$node'|'  -e 's|@DRY@|0|' \
+			$bindir/$module > $qfile      ; chmod 755 $qfile      
+		ec "# Built $qfile for $nl flats"
 
+		mycd $WRK    ### back to $WRK to run jobs
+		ec "#-----------------------------------------------------------------------------"
+
+        if [ $dry == 'T' ]; then 
+			ec "   >> EXITING TEST MODE << "
+			exit 3
+		fi
+
+		ec "# Submit qsub file ... ";  qsub $qfile
+		ec '# Begin wait loop -- wait for $njobs convert jobs to finish  --'
+        btime=$(date "+%s.%N"); sleep 60     # before starting wait loop
+        while :; do                          # qsub wait loop for destripe
+            [ -e pflats.out ] && break       # jobs finished
+            sleep 60
+        done  
+		ec "# fix flats finished, walltime: $(wtime) - check results ..."
+
+        ec "# Flat handing completed: 'PV' removed from headers and normalised"
         ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
-    
+
     #----------------------------------------------------------------------------------------------#
  
     mycd $WRK/images
@@ -521,7 +543,7 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
         if [ $dry == 'T' ]; then ec "====> Ready to build FileInfo.dat"; exit 5; fi
  
         ec "# Build fileinfo table ..."
-        dfits -x 1 v20*_00???.fits | fitsort -d OBJECT FILTER IMRED_FF IMRED_MK STACK SKYSUB | \
+        dfits -x 1 v20*_0????.fits | fitsort -d OBJECT FILTER IMRED_FF IMRED_MK STACK SKYSUB | \
             sed -e 's/Done with //' -e 's/\[1\]/s/' -e 's/_st/_st.fits/' -e 's/\t/  /g' -e 's/   /  /g' > ${fileinfo}
         
         # Check that all support files are present: build lists 
@@ -533,85 +555,102 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
         cut -d' ' -f7,7 fileinfo.tmp | sort -u  > list_skies
  
         err=0
-        for f in $(cat list_flats);  do if [ ! -s ../calib/$f ];  then echo "ATTN: $f missing in calib";  echo $f >> list_missing; err=1; fi; done
-        for f in $(cat list_bpms);   do if [ ! -s ../calib/$f ];  then echo "ATTN: $f missing in calib";  echo $f >> list_missing; err=1; fi; done
-        for f in $(cat list_skies);  do if [ ! -s ../calib/$f ];  then echo "ATTN: $f missing in calib";  echo $f >> list_missing; err=1; fi; done
-        if [ $err -eq 1 ]; then ec "# missing files ... see list_missing"; askuser
+        for f in $(cat list_flats);  do if [ ! -s ../calib/$f ];   then echo "#### ATTN: $f missing in calib";  echo $f >> list_missing; err=1; fi; done
+        for f in $(cat list_skies);  do if [ ! -s ../calib/$f ];   then echo "#### ATTN: $f missing in calib";  echo $f >> list_missing; err=1; fi; done
+        for f in $(cat list_bpms);   do if [ ! -s $DR5/bpms/$f ];  then echo "#### ATTN: $f missing in calib";  echo $f >> list_missing; err=1; fi; done
+        if [ $err -eq 1 ]; then ec "# missing files ... see images/list_missing"; askuser
         else ec "# All needed flats, bpm, skies, stacks available ... continue";  fi
         rm list_bpms list_flats list_skies list_stacks
  
         ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
     
-    if [ $HOSTNAME != "candid01.iap.fr" ]  && [ $dry -eq 0 ]; then  
+    if [ $HOSTNAME != "candid01.iap.fr" ] && [ $HOSTNAME != "c02" ]; then  
         ec "#=========================================================#"
         ec "# ATTN: cannot start jobs from $HOSTNAME. Switched to dry mode  #"
         ec "#=========================================================#"
-        dry=1
+        dry='T'
     fi
 
     #----------------------------------------------------------------------------------------------#
     #       pseudo qualityFITS
     #----------------------------------------------------------------------------------------------#
 
-    nn=$(ls qFits_??.out 2> /dev/full | wc -l)
-    if [ $nn -ge 1 ] || [ -e qFits.outs ] ; then  # 2nd if for compatibility
-        ec "CHECK: Found $nn qFits_xx.out files and $(ls v20*_00???.ldac | wc -l) ldacs ..."
+	mycd $WRK/images
+
+    nl=$(ls v20*_0????.ldac 2> /dev/null | wc -l)
+    if [[ -e $WRK/qFits.DONE ]] && [ $nl -ge 1 ] ; then 
+        ec "CHECK: Found qFits.DONE and $nl ldacs ..."
         ec "CHECK: ==> qFits has been run ... skip to next step"
         ec "#-----------------------------------------------------------------------------"
     else
         rcurr=R5  
-        if [ $dry == 'T' ]; then ec "====> Ready for $rcurr: qFits"; fi
-        if [ -s list_special ]; then list=list_special; else list=list_images; fi
-      
+        if [ -s list_special ]; then 
+			list=list_special; ec "#### ATTN: Using special list"
+		else 
+			list=list_images
+		fi
+		nims=$(cat $list | wc -l)
+
         ec "## - R5:  qFits.sh:  pseudo qFits on $list with $(cat $list | wc -l) entries"
         ec "#-----------------------------------------------------------------------------"
-        rm -f qall qFits_??.??? qFits_??.sh
+        rm -f $WRK/qFits*.* qFits_*.??? chunk_*.lst 
         
-        # N threads: list is split into these many sublists: 12 appropriate for many jobs; 
-        #            use 2 for testing with few images
-        if [ $nimages -lt 50 ]; then nts=5; else nts=12;fi
-        split -n l/$nts $list --additional-suffix='.lst' qFits_
-        ec "# Build $nts qsub files with about $(cat qFits_aa.lst | wc -l ) each ..."
-        
+        # use small chunk size for testing
+		if [ $nims -ge 120 ]; then 
+			n_chunks=18
+		else
+			n_chunks=5
+		fi
+		split -n l/$n_chunks --additional-suffix='.lst' $list qFits_ 
+		nts=$(ls qFits_??.lst | wc -l)
+
         for l in qFits_??.lst; do
-            id=$(echo $l | cut -d\_ -f2 | cut -d\. -f1) # ; echo $id
-            qfile=qFits_${id}.sh ; touch $qfile ; chmod 755 $qfile
+            id=$(echo $l | cut -d\_ -f2 | cut -d\. -f1)       # ; echo $id
+            qfile=$WRK/qFits_${id}.sh ; touch $qfile ; chmod 755 $qfile
             sed -e 's|@LIST@|'$l'|'  -e 's|@ID@|'$id'|'  -e 's|@FILTER@|'$FILTER'|' \
                 -e 's|@NODE@|'$node'|'  -e 's|@WRK@|'$WRK'|'  -e 's|@DRY@|'$dry'|'  \
-                -e 's|@IDENT@|'$PWD/qFits_$id'|'  $bindir/qFits.sh > ./$qfile
+                -e 's|@IDENT@|'$PWD/qFits_$id'|'  $bindir/qFits.sh > $qfile
 
-            ec "# Built $qfile with $(cat $l | wc -l) entries"
-            echo "qsub $qfile" >> qall
+            ec "# Built $(echo $qfile | cut -d\/ -f6) with $(cat $l | wc -l) entries"
+            echo "qsub $qfile; sleep 2" >> $WRK/qFits.submit
         done   
-        ec "# ==> written to file 'qall' with $nts entries "
+
+        ec "# ==> written to file 'qFits.submit' with $nts entries "
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then 
             ec "   >> EXITING TEST MODE << "
-            ec "# to clean up: "; ec "% rm \$WRK/images/qFits_*.* \$WRK/images/qall ";  exit 0
+            ec "# to clean up ...  rm qFits*.sh qFits.submit images/qFits*.lst";  exit 0
         fi
- 
-        ec "# Submit qsub files ... ";  source qall >> $pipelog
-        ec " >>>>   Wait for $nts qFits jobs ... first check in 1 min  <<<<<"
 
-        btime=$(date "+%s.%N");  sleep 60      # before starting wait loop
-        while :; do           #  begin qsub wait loop for qFits
-            njobs=$(qstat -au moneti | grep qFits_${FILTER} | wc -l)
-            [ $njobs -eq 0 ] && break          # jobs finished
+		# get official param and config files:
+		cd $confdir/qFits; rsync -auv -q *.config *param *ret *conv *nnw $WRK/images
 
-			runjobs=$(qstat -au moneti | grep qFits_${FILTER} | grep \ R\  | wc -l)
-            ndone=$(ls -1 v20*_00???.ldac 2> /dev/null | wc -l)
-            ntodo=$(($nimages - $ndone)) ;  nsec=$((2*${ntodo})) 
-            if [ $nsec -le 60 ];   then nsec=60; fi            # min: 1 min
+		mycd $WRK    # back here to submit jobs
+
+        ec "# Submit qsub files ... ";  source qFits.submit
+        ec " >>>>   Wait for $nts qFits jobs ...  <<<<<"
+
+        btime=$(date "+%s.%N");  sleep 30      # before starting wait loop
+        while :; do                            # begin qsub wait loop for qFits
+            nn=$(ls qFits_*.out 2> /dev/null | wc -l)   # jobs done
+            [ $nn -eq $nts ] && break          # jobs finished
+
+            ndone=$(ls -1 images/v20*_0????.ldac 2> /dev/null | wc -l)   # images processed
+            ntodo=$(($nims - $ndone)) 
+			nsec=${ntodo} 
+            if [ $nsec -le   60 ]; then nsec=30; fi            # min: 1 min
 			if [ $nsec -ge 3600 ]; then nsec=3600; fi          # max: 1 hr
-            nmin=$(echo "scale=1; $nsec/60" | bc); nhrs=$(echo "scale=1; $nmin/60" | bc)
+            nmin=$(echo "scale=1; $nsec/60" | bc)
+			nhrs=$(echo "scale=1; $nmin/60" | bc)
             if [ $nsec -gt 5400 ]; then wmsg="$nhrs hr"; else wmsg="$nmin min"; fi
-            ec "# $runjobs jobs running; $ndone images processed, $ntodo remaining - next check in $wmsg"
+            ec "# $ndone images processed, $ntodo remaining - next check in $wmsg"
             sleep $nsec
         done  
         ec "# qFits jobs finished, walltime: $(wtime) - check results ..."
 
+		# check torque EXIT STATUS
         grep 'EXIT\ STATUS' qFits_??.out > estats
         ngood=$(grep STATUS:\ 0 estats | wc -l)
         if [ $ngood -ne $nts ]; then
@@ -622,95 +661,135 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
             rm estats
         fi
 
+		# remove empty lines from torque logfiles
+		for f in qFits_??.out; do strings $f > xx; mv xx $f; done
+
+		cd images
+		ec "# Build Nstars.dat file"
+		for l in v2*[0-9].ldac; do 
+			echo -n ${l%.ldac}\ \ ; dfits -x 0 $l | grep NAXIS2 | grep -v \ 1\  | \
+			awk '{printf "%4i ",$3}; END{print " "}' | awk '{print $0, $1+$2+$3+$4+$5+$6+$7+$8+$9+$10+$11+$12+$13+$14+$15+$16}' 
+		done > Nstars.tab
+		cd ..
+
         # ---------------------- Finished qFits run; check products ----------------------
- 
-        nldacs=$(ls -1 $WRK/images/v20*_00???.ldac        2> /dev/null | wc -l)
-        nwghts=$(ls -1 $WRK/images/v20*_00???_weight.fits 2> /dev/null | wc -l)
-        npsfex=$(ls -1 $WRK/images/v20*_00???_psfex.xml   2> /dev/null | wc -l)
-        ec "# Found $nwghts weights, $nldacs ldacs, $npsfex psfex.xml files for $nimages images "
+
+        nldacs=$(ls -1 $WRK/images/v20*_0????.ldac        2> /dev/null | wc -l)
+        nwghts=$(ls -1 $WRK/images/v20*_0????_weight.fits 2> /dev/null | wc -l)
+        npsfex=$(ls -1 $WRK/images/v20*_0????_psfex.xml   2> /dev/null | wc -l)
+        ec "# Found $nwghts weights, $nldacs ldacs, $npsfex psfex.xml files for $nims images "
         
-        grep -ni ERROR   qFits_??.out > qFits.errs
-        grep -ni WARNING qFits_??.out > qFits.warns
-        nerr=$(cat qFits.errs | wc -l)
-        nwarns=$(cat qFits.warns | wc -l)
+        grep -ni ERROR   qFits_??.out | grep -v FutureWarn > qFits.errs ;  nwarn=$(cat qFits.warns 2> /dev/null | wc -l)
+        grep -ni WARNING qFits_??.out | grep -v ATLAS > qFits.warns;  nerrs=$(cat qFits.errs 2> /dev/null| wc -l)
 
-        if [ $nerr -ge 1 ]; then ec "# ATTN: Found $nerr errors in qFits_xx.out files; see qFits.errs"; fi
+        if [ $nerrs -ge 1 ]; then 
+			ec "#### ATTN: Found $nerrs errors in qFits_xx.out files; see qFits.errs"
+		else
+			rm qFits.errs
+		fi
 
+        if [ $nwarn -ge 1 ]; then 
+			ec "#### ATTN: Found $nwarn warnings in qFits_xx.out files; see qFits.warns"
+		else
+			rm qFits.warns
+		fi
+
+		mycd images   #--------- Back to images for various checks
         rm -f missing.ldacs  missing.weights  # to rebuild them
-        if [ $nwghts -ne $nimages ]; then 
+        if [ $nwghts -ne $nims ]; then 
             for f in $(cat list_images); do 
-                if [ ! -e ${f%.fits}_weight.fits ]; then ec "ATTN: weight missing for $f" >> missing.weights; fi
+                if [ ! -e ${f%.fits}_weight.fits ]; then 
+					ec "#### ATTN: weight missing for $f" >> missing.weights
+				fi
             done
-            ec "# PROBLEM: $(($nimages-$nwghts)) weights missing ... see missing.weights"
+            ec "# PROBLEM: $(($nims-$nwghts)) weights missing ... see missing.weights"
         fi
         
-        if [ $nldacs -ne $nimages ]; then 
+        if [ $nldacs -ne $nims ]; then 
             for f in $(cat list_images); do 
-                if [ ! -e ${f%.fits}.ldac ]; then echo "ATTN: ldac missing for $f" >> missing.ldacs; fi
+                if [ ! -e ${f%.fits}.ldac ]; then echo "#### ATTN: ldac missing for $f" >> missing.ldacs; fi
             done
-            ec "# PROBLEM: $(($nimages-$nldacs)) ldacs missing ... see missing.ldacs"
+            ec "# PROBLEM: $(($nims-$nldacs)) ldacs missing ... see missing.ldacs"
         fi
         
-        if [ $npsfex -ne $nimages ]; then ec "# PROBLEM: $(($nimages-$npsfex)) _psfex's missing ... "; fi
+        if [ $npsfex -ne $nims ]; then ec "# PROBLEM: $(($nims-$npsfex)) _psfex's missing ... "; fi
         
         if [ -s missing.weights ] || [ -s missing.ldacs ]; then 
             cat missing.ldacs missing.weights 2> /dev/null | cut -d\  -f7,7 > list_missing
             nmiss=$(cat list_missing | wc -l)
             ec "# PROBLEM: see list_missing "; askuser
         fi
+		# Build table with num stars per extension
+		
         ec "# qFits runs successfull ...  GOOD JOB!! Clean-up and continue"
-            # ---------------------- create subdirs for products
-        if [ ! -d qFits ]; then mkdir qFits weights ldacs Rejected ; fi
-        
-        mv v20*_cosmic.fits v20*_flag.fits v20*psfex.ldac v20*_sex.xml  qFits
-        mv qFits_??.sh qFits_??.log   qFits      # keep .out 
+		
+        # Now clean up .....
+        rm qFits_??.lst v20*cosmic.fits v20*flag.fits v20*psfex.ldac
+		if [ ! -d  ldacs  ]; then mkdir  ldacs  ; fi
+		if [ ! -d weights ]; then mkdir weights ; fi
+        ec "# move _weight files to weights/, ldac files to ldacs/, and build links"
+        mv v20*_weight.fits weights;  ln -s weights/v20*_weight.fits .
+        mv v20*_0????.ldac v20*_noSAT.ldac  ldacs  # original and flagged
+		ln -s ldacs/v20*_0????_noSAT.ldac . 
+		rename _noSAT.ldac .ldac v20*noSAT.ldac
+
+		echo  "# qFits runs successfull ...  GOOD JOB!! " > $WRK/qFits.DONE
     fi
-       
+
+#	echo "### QUIT HERE FOR NOW ###" ; exit 0    
+
+###  To Do .....       
+# edit qfits.sh as needed - see EB's email
+# really necessary to build flag file?
+# redo fix of COSMOS files as per Bo's instructions
+
     #----------------------------------------------------------------------------------------------#
     #       Get psf stats from psfex
     #----------------------------------------------------------------------------------------------#
  
-    if [ -s badPSF.dat ] && [ -s PSFsel.out ]; then
-        ec "CHECK: PSF selection already done and $(grep v20 badPSF.dat | wc -l) images discarded"
+	mycd $WRK/images
+#	ls Nstars.tab  $WRK/PSFsel.out
+    if [ -s Nstars.tab ] && [ -s $WRK/PSFsel.out ]; then
+        ec "CHECK: PSF selection already done ..."
         ec "CHECK: ==> skip to next step"
         ec "#-----------------------------------------------------------------------------"
     else
         npsfx=$(ls v20*psfex.xml | wc -l) 
-        ec "## - R6:  PSFsel.sh: get psf stats from $npsfx xml files and discard ones with bad PSF"
+        ec "## - R6:  Extract psf stats from $npsfx xml files and discard ones with bad PSF"
         ec "#-----------------------------------------------------------------------------"
-        rm -f PSFsel.??? PSFsel.sh
+        rm -f $WRK/PSFsel.??? $WRK/PSFsel.sh
         # NB: single file - not working on list (could change)
 
-        ls -1 v20*_00???_psfex.xml > PSFsel.lst
-        qfile="PSFsel.sh"; touch $qfile; chmod 755 $qfile
-        sed -e 's|@NODE@|'$node'|'  -e 's|@WRK@|'$WRK'|'  -e 's|@DRY@|'$dry'|' \
-            -e 's|@FILTER@|'$FILTER'|'  $bindir/PSFsel.sh > ./$qfile
+        ls -1 v20*_0????_psfex.xml > PSFsel.lst
+        qfile=$WRK/PSFsel.sh; touch $qfile; chmod 755 $qfile
+        sed -e 's|@LIST@|PSFsel.lst|'  -e 's|@WRK@|'$WRK'|'  -e 's|@DRY@|'$dry'|' \
+            -e 's|@FILTER@|'$FILTER'|'  $bindir/PSFsel.sh > $qfile
 
-        ec "# Built $qfile with $(cat list_images | wc -l) entries"
+		nl=$(cat PSFsel.lst | wc -l)
+        ec "# Built $qfile with $nl entries"
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
 
+		mycd $WRK    #  Back here for submission
         ec "# submitting $qfile ...  "; qsub $qfile
         ec " >>>>   Wait for PSFsel job to finish ...   <<<<<" 
         
-        btime=$(date "+%s.%N"); sleep 60   # before starting wait loop
+        btime=$(date "+%s.%N"); sleep 30   # before starting wait loop
         while :; do           #  begin qsub wait loop for PSFsel
-            njobs=$(qstat -au moneti | grep PSFsel_${FILTER} | wc -l)
-            [ $njobs -eq 0 ] && break          # jobs finished
+            #njobs=$(ls $WRK/PSFsel.out 2> /dev/null | wc -l)
+            [ -s PSFsel.out ] && break          # jobs finished
 
-            ndone=$(cat psfstats.full 2> /dev/null | wc -l)
-            ntodo=$(($nimages - $ndone)) ;  nsec=$(($ntodo/10))
+            ndone=$(cat PSFsel.dat 2> /dev/null | wc -l)
+            ntodo=$(($nl - $ndone)) ;  nsec=$(($ntodo/10))
             if [ $nsec -le 60 ];   then nsec=60; fi            # min: 1 min
-			if [ $nsec -ge 3600 ]; then nsec=3600; fi          # max: 1 hr
+			if [ $nsec -ge 1800 ]; then nsec=1800; fi          # max: 0.5 hr
             nmin=$(echo "scale=1; $nsec/60" | bc); nhrs=$(echo "scale=1; $nmin/60" | bc)
             if [ $nsec -gt 5400 ]; then wmsg="$nhrs hr"; else wmsg="$nmin min"; fi
             ec "# $ndone PSFsels done, $ntodo remaining - next check in $wmsg "
             sleep $nsec
         done  
         ec "# PSFsel job finished; wallime $(wtime). "
-        if [ ! -e PSFsel.out ]; then
-            ec "# PSFsel.out not found ... aborted?? quitting "; exit 5
-        fi  #;  ec "# PSFsel finished - now check exit status"
+		grep -v votable PSFsel.out > x ; mv x PSFsel.out
 
         ngood=$(tail -1 PSFsel.out | grep STATUS:\ 0 | wc -l) 
         if [ $ngood -eq 0 ]; then
@@ -724,153 +803,40 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
             ec "PROBLEM: found $nerr errors in PSFsel.out "
             askuser
         fi
-        nbad=$(grep v20 badPSF.dat | wc -l)
-        ec "# PSF selection done, exit status ok; no errors found; see PSFsel.out for details "
-        ec "# $nbad files with bad PSF found and removed ... clean-up and continue"
 
-        best=$(sort -k2,3 psfstats.dat | head -1)
-        ec "# Select highest quality image: $best"
+		ndone=$(grep ^v20 $WRK/images/PSFsel.dat | wc -l)
+		if [ $ndone -ne $nl ]; then
+            ec "PROBLEM: found only $ndone lines of $nl in PSFsel.dat "
+            askuser
+        fi
+
+		mycd images   
+        nbad=$(grep v20 badPSF.dat 2> /dev/null | wc -l)
+        ec "# PSF selection done, exit status ok; no errors found; "
+        ec "# $nbad files with bad PSF found and removed ... "
+
+        best=$(grep v20 PSFsel.dat | sort -k2,3 | head -1)
+#####        ec "# Select highest quality image: $best"
         ### TBD: write ??? kwd to indicate ref photom image for scamp
-        
-        mv v20*_psfex.xml qFits_??.lst  qFits   # DELETE?? not sure worth keeping further
-        ec "# move _weight files to weights/, ldac files to qFits/, and build links"
-        mv v20*_weight.fits weights;  ln -s weights/v20*_weight.fits .
-        mv v20*_00???.ldac  qFits;    ln -s qFits/v20*_00???.ldac .
 
-        ls -1 v20*_00???.ldac > list_ldacs  ; nldacs=$(cat list_ldacs | wc -l)
-        ls -1 v20*_00???.fits > list_images ; nimages=$(cat list_images | wc -l)
-#       ec "# list_images and list_ldacs rebuild with $nimages images" 
+        ls -1 v20*_0????.ldac > list_ldacs  ; nldacs=$(cat list_ldacs | wc -l)
+        ls -1 v20*_0????.fits > list_images ; nimages=$(cat list_images | wc -l)
+        ec "# list_images and list_ldacs rebuild with $nimages file" 
+
+		ec  "# PSF selection successfull ...  GOOD JOB!! " ; chmod 444 $WRK/PSFsel.out
 
         ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == 'T' ]; then ec "# >>> Interactive mode:" ; askuser; fi
+
+        # ---------------------- create subdirs for products
+        
+		mycd $WRK; rm qFits.submit
+        if [ ! -d qFits ]; then mkdir qFits ; fi
+        mv images/v20*_psfex.xml qFits   # DELETE?? not sure worth keeping further
+        mv qFits_??.sh qFits_??.???   qFits   
     fi  
-    
-    #----------------------------------------------------------------------------------------------#
-    #       Flag saturated sources in ldacs
-    #----------------------------------------------------------------------------------------------#
- 
-    nn=$(ls -1 FlagSat_*.out 2> /dev/null | wc -l)
-    if [ $nn -gt 0 ]; then
-        ec "CHECK: Found $nn FlagSat .out files - saturation already flagged in ldacs ..."
-        ec "CHECK: ==> skip to next step "
-        ec "#-----------------------------------------------------------------------------"
-    else 
-        rcurr=R6
-        ec "## - R6:  FlagSat.sh: flag saturation in ldac files ==> new ldacs"
-        ec "#-----------------------------------------------------------------------------"
-        rm -f qall  FlagSat_??.??? FlagSat_??.sh
-        
-        # -----------------------------------------------------------------------------
-        # Requires: ldac's from qFits (normally links to files in qFits dirs
-        # Produces: new ldacs with saturation flagged (regular files) -noSAT, which are
-        #           then renamed clobbering the originals (links)
-        # ATTN: added --noplot option .... we never look at them .... at least for testing
-        # -----------------------------------------------------------------------------
- 
-        if [ ! -s list_ldacs ]; then ls -1 v20*_00???.ldac > list_ldacs; fi  
-        nldacs=$(cat list_ldacs | wc -l)
+#    echo "### QUIT HERE FOR NOW ###" ; exit 0    
 
-        if [ -s list_special ]; then list=list_special; else list=list_ldacs; fi
-        # split the list:
-        if [ $nimages -lt 50 ]; then nts=4; else nts=8; fi
-        split -n l/$nts $list --additional-suffix='.lst' FlagSat_
-        
-        for l in FlagSat_??.lst; do
-            id=$(echo $l | cut -d\_ -f2 | cut -d\. -f1) # ; echo $id
-            qfile=FlagSat_${id}.sh  ; touch $qfile; chmod 755 $qfile
-            sed -e 's|@NODE@|'$node'|'  -e 's|@LIST@|'$l'|'  -e 's|@DRY@|'$dry'|' \
-                -e 's|@IDENT@|'$PWD/FlagSat_$id'|'   -e 's|@FILTER@|'$FILTER'|' \
-                -e 's|@ID@|'$id'|'  -e 's|@WRK@|'$WRK'|'  $bindir/FlagSat.sh > $qfile
-
-            ec "# Built $qfile with $(cat $l | wc -l) entries"
-            echo "qsub $qfile" >> qall
-        done   
-        ec "# ==> written to file 'qall' with $nts entries "
-        ec "#-----------------------------------------------------------------------------"
-        if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
-
-        ec "# Submit qsub files ... ";  source qall >> $pipelog
-        ec " >>>>   wait for $nts FlagSat jobs ... first check in 1 min  <<<<<"
-        
-        bdate=$(date "+%s.%N"); sleep 60     # before starting wait loop
-        while :; do           # qsub wait loop for FlagSat
-            njobs=$(qstat -au moneti | grep FlagSat_${FILTER}_ | wc -l)
-            [ $njobs -eq 0 ] && break          # jobs finished
-
-			runjobs=$(qstat -au moneti |grep FlagSat_${FILTER}_ | grep \ R\  | wc -l)
-            ndone=$(ls -1 v20*_00???_noSAT.ldac | wc -l)
-            ntodo=$(($nimages - $ndone)) ;  nsec=$((${ntodo}/3)) 
-            if [ $nsec -le 60 ];   then nsec=60; fi            # min: 1 min
-			if [ $nsec -ge 3600 ]; then nsec=3600; fi          # max: 1 hr
-            nmin=$(echo "scale=1; $nsec/60" | bc); nhrs=$(echo "scale=1; $nmin/60" | bc)
-            if [ $nsec -gt 5400 ]; then wmsg="$nhrs hr"; else wmsg="$nmin min"; fi
-            ec "# $runjobs jobs running; $ndone FlagSats done, $ntodo remaining - next check in $wmsg "
-            sleep $nsec
-        done  
-        ec "# FlagSat finished; walltime $(wtime) - check results ..."
-
-        rm -f estats         # before filling it
-        for l in FlagSat_??.out; do tail -1 $l >> estats; done
-        nbad=$(grep -v STATUS:\ 0  estats | wc -l)
-        if [ $nbad -gt 0 ]; then
-            ec "PROBLEM: some FlagSat's exit status not 0 ... "
-            grep -v \ 0  estats;    askuser
-        else
-            ec "CHECK: FlagSat.sh exit status ok ... continue"; rm -f estats
-        fi
-        # check number of files produced:
-        nnew=$(ls -1 v20*_noSAT.ldac | wc -l)
-        if [ $nnew -lt $nimages ]; then
-            ec "CHECK: found only $nnew noSAT ldacs; $(($nimages-$nnew)) missing...."
-        fi
-
-        # rm FutureWarning errors and check the rest:
-        grep -v  -e 'FutureWarning' -e 'None:' -e '^*' FlagSat_??.out > FlagSat.outs
-        grep -v -e '-----' -e 'runtime' FlagSat.outs > FlagSat.summ
-
-        # Traceback (python) errors
-        grep -B1 -A3 Traceback FlagSat.summ > FlagSat_python.errs
-        nerrs=$(grep Traceback FlagSat_python.errs | wc -l)
-        if [ $nerrs -gt 0 ]; then
-            ec "PROBLEM: Found $nerrs python Traceback erros in FlagSat files ... see FlagSat_python.errs"
-            askuser
-        else
-            rm -f FlagSat_python.errs
-        fi
-
-        # Other errors:
-        grep -i -e ^% -e error FlagSat_??.out | grep -v FutureWarn | grep -B1 Error > FlagSat.errs
-        grep python FlagSat.errs | tr -s \  | cut -d\  -f5,5 > FlagSat.missing
-        nerr=$(grep Error FlagSat.errs | wc -l)
-        if [ $nerr -gt 0 ]; then
-            ec "CHECK: found $nerr errors ... see flagsat.errs & flagsat.missing"
-            askuser
-            
-            ec "# Move $nerr images and related files to Rejected/; add names to $badfiles"
-            for f in $(grep v20 FlagSat.missing | cut -d\. -f1); do 
-                mv ${f}*.* Rejected
-#               grep -v $f list_images > newlist; mv newlist list_images
-            done
-            ec "Problem with saturation flagging: " >> $badfiles
-            sed 's/v20/- v20/' FlagSat.missing >> $badfiles
-            ec "Rebuild list_images and list_ldacs"
-            \ls -1 v20*_00???.fits > list_images ; nimages=$(cat list_images | wc -l)
-            \ls -1 v20*_00???.ldac > list_ldacs  ; nldacs=$(cat list_ldacs | wc -l)
-			ec "# Now have $nimages images and $nldacs ldacs. "
-        else 
-            rm FlagSat.errs FlagSat.missing
-        fi 
-        
-        ec "#-----------------------------------------------------------------------------"
-        ec "# rm previous ldacs (links) and build new ones to _noSAT ones with root name"
-        
-        rm -f v20*_00???.ldac  qall                  # these are the links
-        mv v20*_00???_noSAT.ldac ldacs; ln -s ldacs/v20*noSAT.ldac .        
-        rename _noSAT.ldac .ldac v20*noSAT.ldac   # rename ldacs; keep them local for scamp
-		mv FlagSat_??.lst FlagSat_??.sh qFits
-        mv qFits ..
-    fi
-    
     if [ $auto == 'T' ]; then                                 # END P1
         ec "#-----------------------------------------------------------------------------"
         ec "# $pcurr finished; ==> auto continue to $pnext"
@@ -881,7 +847,7 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
         ec "#                                End of $pcurr "
         ec "#-----------------------------------------------------------------------------"
     fi
-   
+	echo "### QUIT HERE FOR NOW ###" ; exit 0       
 #-----------------------------------------------------------------------------------------------
 elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, build obj masks
 #-----------------------------------------------------------------------------------------------
@@ -900,7 +866,6 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
 		ec "# Found $nn UVIS*.fits files - looks like P2 has been done already ... quitting"
 		exit 0
 	fi
-    if [ $dry -eq 0 ]; then cppipe; else testmsg; fi
 
     ec "#-----------------------------------------------------------------------------"
     ec "## P2: scamp, swarp, and first-pass stack: check available data ..."
@@ -910,7 +875,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
     
     if [ ! -e list_images ]; then 
 		ec "WARNING: 'list_images not found ... build it "
-        ls -1 v20*_00???.fits > list_images
+        ls -1 v20*_0????.fits > list_images
     fi
     if [ ! -e list_ldacs  ]; then 
         ec "WARNING: list_ldacs not found ... build it"
@@ -922,12 +887,12 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         ls -1 v20*_weight.fits > list_weights
     fi
 
-     if [ ! -e list_heads  ]; then 
+    if [ ! -e list_heads  ]; then 
         ec "WARNING: list_heads not found ... build it"
         ls -1 v20*.head > list_heads
     fi
 
-   # ls -1 v20*_00???.fits > list_images ; ls -1 v20*_00???.ldac > list_ldacs  ; 
+   # ls -1 v20*_0????.fits > list_images ; ls -1 v20*_0????.ldac > list_ldacs  ; 
 	nldacs=$(cat list_ldacs   | wc -l)
 	nimages=$(cat list_images | wc -l)
     nwghts=$(cat list_weights | wc -l)
@@ -962,10 +927,10 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
     else
         rcurr=R7
 
-        if [ -s list_some ]; then cp list_some pscamp.lst; else cp list_ldacs pscamp.lst; fi
+        if [ -s list_special ]; then cp list_special pscamp.lst; else cp list_ldacs pscamp.lst; fi
         nl=$(cat pscamp.lst | wc -l)
         if [ $nl -lt 2000 ]; then 
-			wtime=48; nsec=30    # useful in testing
+			wtime=48; nsec=20    # useful in testing
 		else 
 			wtime=100; nsec=300
 		fi
@@ -973,7 +938,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         ec "## - R7:  pscamp.sh: run scamp on pscamp.lst with $nl entries ... "
         ec "#-----------------------------------------------------------------------------"
         rm -f pscamp.out pscamp.log pscamp.sh   # do not delete pscamp.lst, just build above
-        ec "# using scamp  ==> $(scamp -v)"
+#        ec "# using scamp  ==> $(scamp -v)"
 
         qfile="pscamp.sh"; touch $qfile; chmod 755 $qfile
         sed -e 's|@NODE@|'$node'|'     -e 's|@IDENT@|'$PWD/pscamp'|'  -e 's|@DRY@|0|'  \
@@ -984,26 +949,30 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
             sed -i -e 's|ppn=22|ppn=8|' -e 's|time=48|time=06|' $qfile
         fi
 
-        ec "# Built $qfile with $nl entries"
+        ec "# Built $qfile and pscamp.lst with $nl entries"
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then 
 			echo ""
-			echo "   >> BEGIN dry-run of pscamp.sh:  << "
+			ec "#   >> BEGIN dry-run of pscamp.sh:  << "
 			echo ""
 			$PWD/pscamp.sh list_ldacs dry
-			echo "   >> Dry-run of $0 finished .... << "; exit 0
+			echo
+			ec "   >> FINISHED dry-run of $0 finished .... << "; exit 0
 		fi
         
-        ec "# submitting $qfile ... "; qsub $qfile      
+		if [ -e pscamp.out ]; then rm pscamp.out; fi
+		ec "# PBS resources: $(grep nodes= pscamp.sh | cut -d \  -f3)"
+        ecn "# submitting $qfile ... job is"; qsub $qfile      
         ec " >>>>   wait for pscamp to finish ...   <<<<<"
         
-        btime=$(date "+%s"); sleep 60   # before starting wait loop
-        while :; do           #  begin qsub wait loop for pscamp
-            njobs=$(qstat -au moneti | grep pscamp_${FILTER} | wc -l)
-            [ $njobs -eq 0 ] && break          # jobs finished
-			tail -2 pscamp.log | strings 
+        btime=$(date "+%s"); sleep 20   # before starting wait loop
+        while :; do              #  begin qsub wait loop for pscamp
+            njobs=$(ls pscamp.out 2> /dev/null | wc -l)
+            [ $njobs -eq 1 ] && break               # jobs finished
+##			tail -2 pscamp.log | strings 
             sleep $nsec
         done  
+
         if [ ! -e pscamp.out ]; then
             ec "# pscamp.out not found ... pscamp aborted?? "; exit 5
         fi  
@@ -1024,28 +993,52 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         fi
 
         # check warnings 
-        nwarn=$(cat scamp.warn | wc -l)
+        nwarn=$(cat scamp.warn 2> /dev/null | wc -l)
         if [ $nwarn -ge 1 ]; then 
             ec "# WARNING: $nwarn warnings found in logfile for $nl files"; head scamp.warn
         fi   
 
         # check fluxscale table built by pscamp script
         ec "#-----------------------------------------------------------------------------"
-        ec "#       Scamp flux-scale results"
+        ec "#       Scamp flux-scale results "
         ec "#-----------------------------------------------------------------------------"
-        $0 fscale
-        ec "#-----------------------------------------------------------------------------"
+		########## ATTN: FLXSCALE kwd in head files not being produced by scamp   ########
+		fsfile=fluxscale.dat    
+		if [ ! -e $fsfile ]; then 
+			ec ">> Rebuild $fsfile"
+			grep FLXSCALE v20*.head | cut -d\/ -f1 | sed 's/.head:FLXSCALE=//' > $fsfile
+		fi
+ 
+		nfs=$(cat $fsfile | wc -l)   
+		if [ $nfs -eq 0 ]; then
+			ec "#### ATTN: $fsfile empty!!  FLXSCALE kwd not written by scamp??"
+		else
+			nun=$(sort -u -k2 $fsfile | wc -l)    # number of unique values
+			if [ $nun -le $((2*$nfs/3)) ]; then
+				ec "#### ATTN: $fsfile has $nun unique values of about $(($nimages * 16)) expected"
+			fi
+			
+			nbad=$(\grep 0.0000000 $fsfile |  wc -l)
+			if [ $nbad != 0 ]; then echo "#### ATTN: found $nbad chips with FLUXSCALE = 0.00"; fi
+			nbad=$(\grep INF $fsfile |  wc -l)
+			if [ $nbad != 0 ]; then echo "#### ATTN: found $nbad chips with FLUXSCALE = INF"; fi
+			res=$(grep -v -e INF -e 0.00000000 $fsfile | tr -s ' ' | cut -d' ' -f2 | awk -f $uvis/scripts/std.awk )
+			ec "# mean flux scale: $res"
+		fi
+		ec "#-----------------------------------------------------------------------------"
+		grep pscamp.sh pscamp.out
+		ec "#-----------------------------------------------------------------------------"
+        ec "CHECK: pscamp.sh successful, $nheads head files built ... clean-up and continue"
+        if [ ! -d scamp ] ; then mkdir scamp ; else rm -f scamp/* ; fi
+		mv v20*.head scamp   #####; ln -s scamp/v*.head .
+		mv *.png pscamp* fluxscale.dat scamp
+        #rm v20*.ldac # list_ldacs   # don't need these anymore
 
-        ec "CHECK: pscamp.sh successful, $nheads head file built ... clean-up and continue"
-        mkdir scamp; mv v20*.head scamp; ln -s scamp/v*.head .
-		mv *.png pscamp* fluxscale.dat list_low-contrast scamp
-        rm v20*.ldac list_ldacs   # don't need these anymore
-
         ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
     
-
+	echo "### QUIT HERE FOR NOW ###" ; exit 0       
     #----------------------------------------------------------------------------------------#
     #       destripe casu images - p1
     #----------------------------------------------------------------------------------------#
@@ -1107,7 +1100,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
             [ $njobs -eq 0 ] && break          # jobs finished
             
 			runjobs=$(qstat -au moneti | grep destripe_${FILTER}_ | grep \ R\  | wc -l) 
-            ndone=$(ls -1 v20*_00???_des.fits 2> /dev/null | wc -l)
+            ndone=$(ls -1 v20*_0????_des.fits 2> /dev/null | wc -l)
             ntodo=$(($nimages - $ndone)) ; nsec=$((2*$ntodo))
             if [ $nsec -le 60 ];   then nsec=60; fi            # min: 1 min
 			if [ $nsec -ge 3600 ]; then nsec=3600; fi          # max: 1 hr
@@ -1145,7 +1138,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
 		ln -s $outdir/v*_des.fits .; rename _des.fits .fits v*_des.fits
         ec "CHECK: destripe.sh done, products moved to ${outdir}/ and linked ... continue"
 		ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
 
 
@@ -1284,7 +1277,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         rm -rf paw? qall 
 
         ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
 
 
@@ -1364,7 +1357,6 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
 #%   . then do add'l clening: bgd removal and destriping
 #%------------------------------------------------------------------
 
-    if [ $dry -eq 0 ]; then cppipe; else testmsg; fi
 #    ec "#-----------------------------------------------------------------------------"
 #    ec "## P3: add CASU sky then determine and remove best sky with proper mask"
 #    ec "#-----------------------------------------------------------------------------"
@@ -1372,15 +1364,15 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
     mycd $WRK/images
 
     # check that P2 finished properly
-    nimages=$(ls -1L v20*_00???.fits 2> /dev/null | wc -l)  
+    nimages=$(ls -1L v20*_0????.fits 2> /dev/null | wc -l)  
     nlist=$(cat list_images | wc -l)
 
     if [ $nimages -gt 0 ]; then 
         ec "CHECK:  found $nimages image files like: " 
-        ecn " ==> "; ls -lh v20*_00???.fits | head -1 | tr -s ' ' | cut -d' ' -f9-12
+        ecn " ==> "; ls -lh v20*_0????.fits | head -1 | tr -s ' ' | cut -d' ' -f9-12
     else
         ec "!!! BIG PROBLEM: No image files found, or links not valid"
-        ls -lh v20*_00???.fits | head -1  ; askuser
+        ls -lh v20*_0????.fits | head -1  ; askuser
     fi
    
     if [ $nimages -ne $nlist ]; then
@@ -1466,7 +1458,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
             [ $njobs -eq 0 ] && break          # jobs finished
 
 			runjobs=$(qstat -au moneti | grep Masks_${FILTER}_ | grep \ R\  | wc -l)
-            ndone=$(ls -1 /scratch??/mkMasks_*/v20*_00???_mask.fits v20*_00???_mask.fits 2> /dev/null | wc -l)
+            ndone=$(ls -1 /scratch??/mkMasks_*/v20*_0????_mask.fits v20*_0????_mask.fits 2> /dev/null | wc -l)
             ntodo=$(($nimages - $ndone)) ; nsec=$((5*$ntodo)) 
             if [ $nsec -le 60 ];   then nsec=60; fi            # min: 1 min
 			if [ $nsec -ge 3600 ]; then nsec=3600; fi          # max: 1 hr
@@ -1502,7 +1494,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         fi
 
         ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
     
 
@@ -1569,7 +1561,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
             [ $njobs -eq 0 ] && break          # jobs finished
 
 			runjobs=$(qstat -au moneti | grep addSky_${FILTER} | grep \ R\  | wc -l)
-            ndone=$(ls -1 v20*_00???_withSky.fits | wc -l)
+            ndone=$(ls -1 v20*_0????_withSky.fits | wc -l)
             ntodo=$(($nimages - $ndone)) ; nsec=$((3*${ntodo}/2)) 
             if [ $nsec -le 60 ];   then nsec=60; fi            # min: 1 min
 			if [ $nsec -ge 3600 ]; then nsec=3600; fi          # max: 1 hr
@@ -1603,7 +1595,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         rm sky_20*.fits bpm*[0-9].fits  # links to ../calib/sky and bpm files
 
         ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
 
 
@@ -1633,8 +1625,8 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
 
         ec "## - R13: mkSky.sh: determine and subtract good sky from $nimages images"    
         ec "#-----------------------------------------------------------------------------"
-		nout=$(ls -1 mkSky_??.out 2> /dev/full | wc -l)
-		nlog=$(ls -1 mkSky_??.log 2> /dev/full | wc -l)
+		nout=$(ls -1 mkSky_??.out 2> /dev/null | wc -l)
+		nlog=$(ls -1 mkSky_??.log 2> /dev/null | wc -l)
 		if [ $nout -ge 1 ] || [ $nlog -ge 1 ]; then
 			ec "ATTN: found $nout mkSky_??.out and $nlog mkSky_??.log files ... delete them and continue??"
 			askuser
@@ -1743,7 +1735,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
             echo "# $nn files with too few neighbours to build sky" >> $badfiles
             cat list_noSky >> $badfiles
             ec "# ... removed them (to Rejected dir) and added names to $badfiles"
-            ls -1 v20*_00???.fits > list_images
+            ls -1 v20*_0????.fits > list_images
             nimages=$(cat list_images | wc -l)
             ec "# ==> $nimages valid images left."
         fi
@@ -1757,7 +1749,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
             askuser
         fi
 
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
     
 
@@ -1777,8 +1769,8 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
 		nim=$(cat list_images | wc -l)
         ec "## - R14: updateWeights.sh: to exclude area where no sky is calculated for $nim images"  
         ec "#-----------------------------------------------------------------------------"
-		nout=$(ls -1 updateWeights_??.out 2> /dev/full | wc -l)
-		nlog=$(ls -1 updateWeights_??.log 2> /dev/full | wc -l) # ; echo $nout $nlog
+		nout=$(ls -1 updateWeights_??.out 2> /dev/null | wc -l)
+		nlog=$(ls -1 updateWeights_??.log 2> /dev/null | wc -l) # ; echo $nout $nlog
 		if [ $nout -ge 1 ] || [ $nlog -ge 1 ]; then
 			ec "ATTN: found $nout updateWeights_??.out and $nlog update_weights_??.log files ... delete them and continue??"
 			askuser
@@ -1832,7 +1824,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
 		if [ ! -d mkSky ]; then mkdir mkSky; fi
 		mv v20*_sky.fits mkSky
 #        ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
 
 
@@ -1852,11 +1844,10 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
 elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
 #-----------------------------------------------------------------------------------------------
 
-    cd $WRK; if [ $dry -eq 0 ]; then cppipe; else testmsg; fi
     ncurr=4 ; pcurr="p$ncurr" ; pprev=$(($ncurr-1)) ; pnext="p$(($ncurr+1))"
     mycd $WRK/images
     
-    nimages=$(ls -1 v20??????_00???.fits | wc -l)
+    nimages=$(ls -1 v20??????_0????.fits | wc -l)
     ec "# CHECK: found $nimages images"
     
     # ----------------------  Finished checking  ----------------------
@@ -1879,8 +1870,8 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
 		rcurr=R15
         ec "## - R15:  subSky.sh: pure sky-sub, destriping, and lsb-cleaning of $nimages images "
         ec "#-----------------------------------------------------------------------------"
-		nout=$(ls -1 subSky_??.out 2> /dev/full | wc -l)
-		nlog=$(ls -1 subSky_??.log 2> /dev/full | wc -l) # ; echo $nout $nlog
+		nout=$(ls -1 subSky_??.out 2> /dev/null | wc -l)
+		nlog=$(ls -1 subSky_??.log 2> /dev/null | wc -l) # ; echo $nout $nlog
 		if [ $nout -ge 1 ] || [ $nlog -ge 1 ]; then
 			ec "ATTN: found $nout subSky_??.out and $nlog subSky_??.log files ... delete them and continue??"
 			askuser
@@ -1936,7 +1927,7 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
             [ $njobs -eq 0 ] && break          # jobs finished
             
 			runjobs=$(qstat -au moneti | grep subSky_${FILTER}_ | grep \ R\  | wc -l) 
-            ndone=$(ls -1 /scratch??/subSky_*/v20*_00???_clean.fits v20*_00???_clean.fits 2> /dev/null | wc -l)
+            ndone=$(ls -1 /scratch??/subSky_*/v20*_0????_clean.fits v20*_0????_clean.fits 2> /dev/null | wc -l)
             ntodo=$(($nimages - $ndone)) ; nsec=$((2*$ntodo))
             if [ $nsec -le 60 ];   then nsec=60; fi            # min: 1 min
 			if [ $nsec -ge 3600 ]; then nsec=3600; fi          # max: 1 hr
@@ -1972,7 +1963,7 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
 		ln -s cleaned/v*clean.fits .; rename _clean.fits .fits v*_clean.fits
         ec "CHECK: subSky.sh done, clean images moved to cleaned/ and linked ... continue"
 		ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
  
 
@@ -2012,8 +2003,8 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
         rcurr=R16
         ec "## - R16:  pswarp.sh: swarp pass2 for $npaws paws ... by sub-paws "
         ec "#-----------------------------------------------------------------------------"
-		nout=$(ls -1 pswarp2_??.out 2> /dev/full | wc -l)
-		nlog=$(ls -1 pswarp2_??.log 2> /dev/full | wc -l)
+		nout=$(ls -1 pswarp2_??.out 2> /dev/null | wc -l)
+		nlog=$(ls -1 pswarp2_??.log 2> /dev/null | wc -l)
 		if [ $nout -ge 1 ] || [ $nlog -ge 1 ]; then
 			ec "ATTN: found $nout pswarp2_??.out and $nlog pswarp2_??.log files ... delete them and continue??"
 			askuser
@@ -2134,7 +2125,7 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
         rm -rf paw?_?? qall 
 
         ec "#-----------------------------------------------------------------------------"
-        if [ $int -eq 1 ]; then ec "# >>> Interactive mode:" ; askuser; fi
+        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
 
    
@@ -2200,19 +2191,18 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
 #elif [ $1 = 'p7' ]; then      #    -------------- END OF PIPELINE --------------
 #-----------------------------------------------------------------------------------------------
 
-   xx=1  # another dummy step ... not sure why
-
 #@@ ------------------------------------------------------------------------------------
 #@@  And options for status checking
 #@@ ------------------------------------------------------------------------------------
 
-elif [ $1 = 'env'   ]; then   # env:   check environment
-   relcheck  
+elif [[ $1 =~ 'env' ]]; then   # env: check environment
+   procenv
 
-
-elif [ $1 = 'files' ]; then   # files: list files for an image in current work space
+elif [[ $1 =~ 'fil' ]]; then   # files: list files for an image in current work space
    curfiles
 
+elif [[ $1 == 'help' ]] || [[ $1 == '-h'  ]] ; then  # help, -h: list pipeline options
+	pipehelp
 
 elif [ $1 = 'plists' ]; then  # plists: rebuild paw lists and check
 
@@ -2247,37 +2237,7 @@ elif [ $1 = 'plists' ]; then  # plists: rebuild paw lists and check
         askuser
     fi
 
-    
-elif [ $1 = 'fscale'   ]; then   # fluxscale stuff
-    fsfile=fluxscale.dat    
-    if [ ! -e $fsfile ]; then 
-        ec ">> Rebuild $fsfile"
-        grep FLXSCALE v20*.head | cut -d\/ -f1 | sed 's/.head:FLXSCALE=//' > $fsfile
-    fi
- 
-    nfs=$(cat $fsfile | wc -l)   
-    nun=$(sort -u -k2 $fsfile | wc -l)    # number of unique values
-    if [ $nun -le $((2*$nfs/3)) ]; then
-        ec "# ATTN $fsfile has $nun unique values of about $(($nimages * 16)) expected"
-    fi
 
-    nbad=$(\grep 0.0000000 $fsfile |  wc -l)
-    if [ $nbad != 0 ]; then echo "# ATTN: found $nbad chips with FLUXSCALE = 0.00"; fi
-    nbad=$(\grep INF $fsfile |  wc -l)
-    if [ $nbad != 0 ]; then echo "# ATTN: found $nbad chips with FLUXSCALE = INF"; fi
-    res=$(grep -v -e INF -e 0.00000000 $fsfile | tr -s ' ' | cut -d' ' -f2 | awk -f $confdir/awk/std.awk )
-    ec "# mean flux scale: $res"
-
-
-elif [ $1 = 'headinfo'   ]; then   # env:   check environment
-    if [ $(pwd | cut -d\/ -f4) != 'RawData' ]; then
-        echo " Must be run in RawData dir to work on .fit files"
-        exit
-    fi
-    keys="OBS.ID MJD-OBS DET.DIT DET.NDIT ARCFILE RA DEC ESOGRADE OBS.NAME INS.FILT1.NAME OBS.PROG.ID CASUVERS"
-    dfits v20*_00???.fit | fitsort $keys > ../HeadInfo.full
-
-  # #exit 0
   ## ec "##-----------------------------------------------------------------------------"
 
 #-----------------------------------------------------------------------------------------------

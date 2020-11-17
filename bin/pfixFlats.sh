@@ -63,6 +63,7 @@ echo "#"
 mexec="$pydir/convert_flats.py"
 margs=" --verbosity=INFO --log=clean_flats.log"
 mlogfile=fix_flats_out.log
+
 comm="python $mexec -l $list $margs"
 nims=$(cat $list | wc -l)
 
@@ -92,7 +93,6 @@ margs=" --log=norm_flats.log"
 mlogfile=norm_flats_out.log
 
 comm="python $mexec -l $list $margs"
-nims=$(cat $list | wc -l)
 
 echo "# Command line is:"
 echo "# $comm"

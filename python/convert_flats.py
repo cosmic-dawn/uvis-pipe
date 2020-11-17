@@ -25,7 +25,7 @@ def get_parser():
 def main(args):
 
     # Setup the logger
-    logging = setup_logger(args.flog, loglevel=args.verbose_level, file_loglevel="ERROR", name="clean_flats.py")
+    logging = setup_logger(args.flog, loglevel=args.verbose_level, file_loglevel="ERROR", name="convert_flats.py")
 
     try:
         file_list = open(args.inlist)

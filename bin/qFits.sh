@@ -3,7 +3,7 @@
 #PBS -N qFits_@FILTER@_@ID@
 #PBS -o qFits_@ID@.out
 #PBS -j oe
-#PBS -l nodes=1:ppn=8,walltime=12:00:00
+#PBS -l nodes=1:ppn=11,walltime=24:00:00
 #-----------------------------------------------------------------------------
 # pseudo qFits: 
 # requires: astromatic s/w, dfits, python
@@ -15,7 +15,9 @@ umask 022
 export PATH="~/bin:$PATH:/softs/dfits/bin:/softs/astromatic/bin"
 
 module () {  eval $(/usr/bin/modulecmd bash $*); }
-module purge ; module load intelpython/2
+module purge ; module load intelpython/3-2020.2
+export LD_LIBRARY_PATH=/lib64:${LD_LIBRARY_PATH}
+
 sdate=$(date "+%s")
 
 ec() { echo "$(date "+[%d.%h.%y %T"]) $1 "; }    # echo with date
@@ -34,15 +36,17 @@ export PYTHONPATH=$pydir
 
 #-----------------------------------------------------------------------------
 
+node=$(hostname)   # NB: compute nodes don't have .iap.fr in name
+
 # check  if run via shell or via qsub:
 if [[ "$0" =~ "$module" ]]; then
-    ec "$module: running as shell script "
+    ec "$module: running as shell script on $node"
 	list=$1
 	WRK=$WRK
 	FILTER=$FILTER
 	if [[ "${@: -1}" =~ 'dry' ]]; then dry=T; else dry=F; fi
 else
-    ec "$module: running via qsub (from pipeline)"
+    ec "$module: running via qsub (from pipeline) on $node with 8 threads"
 	dry=@DRY@
 	WRK=@WRK@
 	list=@LIST@
@@ -54,8 +58,8 @@ verb=" -VERBOSE_TYPE QUIET"
 #-----------------------------------------------------------------------------
 cd $WRK/images
 
-if [ $? -ne 0 ]; then ec "ERROR: $WRK/images not found ... quitting"; exit 5; fi
-if [ ! -s $list ]; then ec "ERROR: $list not found in $WRK/images ... quitting"; exit 5; fi
+if [ $? -ne 0 ]; then ec "ERROR: $WRK/images not found ... quitting"; exit 10; fi
+if [ ! -s $list ]; then ec "ERROR: $list not found in $WRK/images ... quitting"; exit 10; fi
 
 nl=$(cat $list | wc -l)
 ec "=================================================================="
@@ -79,6 +83,8 @@ for f in $(cat $list); do
    bdate=$(date "+%s")
 
    root=${f%.fits}
+   if [ ! -e $f ]; then ln -s origs/$f . ; fi
+
    grep $f ../FileInfo.dat | tr -s ' ' > $info  # get associated files
    flat=../calib/$(cut -d\  -f4 $info)          # flatfield
    norm=${flat%.fits}_norm.fits                 # normalised flat
@@ -88,20 +94,20 @@ for f in $(cat $list); do
    if [ ! -s $flat ]; then ec " ERROR: $flat not found;"; pb=1; fi
    if [ ! -s $norm ]; then ec " ERROR: $norm not found;"; pb=1; fi
    if [ ! -s $bpm  ]; then ec " ERROR: $bpm  not found;"; pb=1; fi
-   if [ $pb -ge 1 ]; then ec " ... quitting ..."; exit 5; fi
+   if [ $pb -ge 1 ]; then ec " ... quitting ..."; exit 10; fi
 
    #-----------------------------------------------------------------------------
    # 1. sex to get cosmics
    #-----------------------------------------------------------------------------
 
-   chmod 644 $f; python $pydir/rm_pv_kwds.py $f; chmod 444 $f
+#   chmod 644 $f; $pydir/rm_pv_kwds.py $f; chmod 444 $f
 
    flag=${root}_flag.fits           # ; touch $flag    
    cosmic=${root}_cosmic.fits       # ; touch $cosmic
    weight=${root}_weight.fits       # output ... later
 
    if [ ! -e $weight ]  ; then 
-      args=" -c sex_cosmic.config -PARAMETERS_NAME sex_cosmic.param \
+       args=" -c sex_cosmic.config -PARAMETERS_NAME sex_cosmic.param \
              -FILTER_NAME vircam.ret  -CHECKIMAGE_NAME $cosmic  -CATALOG_TYPE NONE \
              -SATUR_KEY TOTO -SATUR_LEVEL 30000 -WRITE_XML N  "
 
@@ -112,8 +118,8 @@ for f in $(cat $list); do
 		 echo " ## DRY MODE - do nothing ## "
       else
       	  $coscomm 
-		  if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 5; fi
-      	  ec " ==> $cosmic built ..."  
+		  if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 1; fi
+      	  ec " ==> $cosmic built ..."    ; sleep 1
       fi
    else
 	  ec "# Attn: found $cosmic ... skip "
@@ -138,10 +144,10 @@ for f in $(cat $list); do
 		 echo " ## DRY MODE - do nothing ## "
       else
       	 $wwcomm 
-		 if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 5; fi
-		 python $pydir/cp_astro_kwds.py -i $f -s _flag   # >> $logfile
-		 python $pydir/cp_astro_kwds.py -i $f -s _weight # >> $logfile
-      	 ec " ==> $weight built ... " #; rm $cosmic 
+		 if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 2; fi
+#		 $pydir/cp_astro_kwds.py -i $f -s _flag   # >> $logfile
+		 $pydir/cp_astro_kwds.py -i $f -s _weight # >> $logfile
+      	 ec " ==> $weight built ... "   ; sleep 1  #; rm $cosmic 
 	  fi
    else
 	  ec "# Attn: found $weight ... skip "
@@ -167,8 +173,8 @@ for f in $(cat $list); do
 		 echo " ## DRY MODE - do nothing ## "
       else
       	  $psexcomm 
-		  if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 5; fi
-      	  ec " ==> $pdac built ..."  
+		  if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 3; fi
+      	  ec " ==> $pdac built ..."    ; sleep 1
       fi
    else
 	  ec "# Attn: found $pdac .... skip "
@@ -188,9 +194,9 @@ for f in $(cat $list); do
 		 echo " ## DRY MODE - do nothing ## "
       else
       	  $psfcomm 
-		  if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 5; fi
-      	  ec " ==> $psfx  built ... "  
+		  if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 4; fi
 		  rm ${root}_psfex.psf #$pdac
+      	  ec " ==> $psfx  built ... "    ; sleep 1
       fi
    else
 	  ec "# Attn: found $psfx ..... skip "
@@ -203,7 +209,7 @@ for f in $(cat $list); do
    ldac=$root.ldac
    if [ ! -e $ldac ]; then 
       args=" -CATALOG_NAME $ldac  -WEIGHT_IMAGE $weight  -FLAG_IMAGE $flag  \
-        -DETECT_THRESH 8.  -SATUR_KEY TOTO  -SATUR_LEVEL 35000 "
+        -DETECT_THRESH 10.  -ANALYSIS_THRESH 5. -SATUR_KEY TOTO  -SATUR_LEVEL 35000 "
       
       sexcomm="sex $f -c sex_scamp.config  $args  $verb" 
       ec ""; ec ">>>> 5. SEx for scamp for "$f
@@ -213,11 +219,11 @@ for f in $(cat $list); do
       else
       	  $sexcomm 
 		  if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 5; fi
-      	  ec " ==> $ldac built ... flag saturated sources"  #; rm $flag
-		  python $uvis/work/ldac2region.py $ldac
+      	  ec " ==> $ldac built ... "  #; rm $flag
+#		  $pydir/ldac2region.py $ldac  ; sleep 1
       fi
    else
-	  ec "# Attn: found ${ldac%.ldac}_noSAT.ldac ... skip "
+	  ec "# Attn: found $ldac ... skip "
    fi
 
    #-----------------------------------------------------------------------------
@@ -225,26 +231,28 @@ for f in $(cat $list); do
    #-----------------------------------------------------------------------------
    sdac=${ldac%.ldac}_noSAT.ldac
    if [ ! -e $sdac ]; then 
-	  satcomm="python $pydir/flag_saturation.py -c $ldac --noplot "
+	  satcomm="$pydir/flag_saturation.py -c $ldac "  #--noplot "
       ec ""; ec ">>>> 6. Flag saturated sources in "$ldac
 	  ec "$satcomm"
       if [ $dry == 'T' ]; then
 		  echo " ## DRY MODE - do nothing ## "
       else
 		  $satcomm 
-		  if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 5; fi
-		  ec " ==> ${ldac%.ldac}_noSAT.ldac built ... "  
-		  #python $uvis/work/ldac2region.py $sdac
+		  if [ $? -ne 0 ]; then ec "ERROR ... quitting"; exit 6; fi
+		  ec " ==> ${sdac} built ... "  ; sleep 1
       fi
    else
-	  ec "# Attn: found ${ldac%.ldac}_noSAT.ldac ... skip "
+	  ec "# Attn: found ${sdac} ... skip "
    fi
 
    edate=$(date "+%s"); dt=$(($edate - $bdate))
+
+   ec "------------------------------------------------------------------"
    ec " >>>> Done - runtime: $dt sec  <<<<"
    ec "------------------------------------------------------------------"
-
+   ec ""
 done
+
 
 #-----------------------------------------------------------------------------
 
@@ -257,4 +265,4 @@ exit 0
 
 #-----------------------------------------------------------------------------
 # to cleanup:
-rm qFits*.* images/v20*_00???_*.* images/v20*_00???.ldac images/v20*_00???.head
+rm qFits*.* images/v20*_0????_*.* images/v20*_00???.ldac images/v20*_00???.head

@@ -97,17 +97,10 @@ nbad=$(grep v20 badPSF.dat | wc -l)
 if [ $nbad -gt 0 ]; then 
     ec "# Found $nbad files with bad psf - see images/badPSF.dat " 
     # ---------------------- discard files from badPSF.dat ----------------------
-	Trash=zRejected
-    ec "# Move $nbad images and related files to $Trash/, add names to $badfiles,  ..."
-    if [ ! -d $Trash ]; then mkdir $Trash; fi
-    for f in $(grep v20 badPSF.dat | cut -d\  -f1); do mv $f*.* $Trash; done 
-    echo "# $nbad files with large or extended PSF" >> $badfiles
-    cat badPSF.dat >> $badfiles 
-    
-    ec "# ... Done ... badPSF files removed (to $Trash)"
+	# for DR5: do not reject these files: keep them for making sky
 else
     ec "# ... none found"  
-    rm badPSF.dat
+#    rm badPSF.dat
 #    echo " No bad PSF files found ... " >> badPSF.dat  # to have a non-empty file
 fi
 

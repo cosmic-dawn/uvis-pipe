@@ -1,367 +1,219 @@
+#!/opt/intel/intelpython3-2019.4-088/intelpython3/bin/python
 #
-# -----------------------------------------------
-# Flag saturated object using MU_MAX-MAG diagram
-# input : c,catalog  : input catalog or file
-#	: o,output   : output catalog
-# -----------------------------------------------
+#-----------------------------------------------------------------------------
+# Flag saturated objects in ldacs:  
+# this version takes the files from the input line; must be run from the
+# directory containing the files.  I looks for the original ldac, copies
+# it, then flags the saturated source and writes some information kwds in
+# the primary header.
+#
+# v. AMo Oct.20: using flux_max: simple threshold of 0.4 max(flux_max)
+# input : ldac files, here the v20*_orig.ldac
+# outputs: same file with saturated stars flagged
+#        : satcheck.png plot with flux_max vs flux_rad for each chip
+#-----------------------------------------------------------------------------
 
-from ASCII_cat import *
 import os,sys
-from stats import *
-import numpy
-from saturation_sub import *
-from optparse import OptionParser
-import astropy.io.fits as pyfits
+import numpy as np
+import astropy.io.fits as fits
+from scipy.stats import sigmaclip
 
-import matplotlib
-matplotlib.use('Agg')
-
+import matplotlib as mpl
+mpl.rcParams['xtick.direction'] = 'in'
+mpl.rcParams['ytick.direction'] = 'in'
+mpl.rcParams['xtick.top'] = "True"
+mpl.rcParams['ytick.right'] = "True"
+mpl.rcParams['xtick.labelsize'] = 8
+mpl.rcParams['ytick.labelsize'] = 8
+mpl.rcParams['xtick.minor.visible'] = True
 import matplotlib.pyplot as plt
-import matplotlib.mlab as mlab
-import matplotlib.cbook as cbook
-import matplotlib.ticker as ticker
+
+path = os.getcwd(); 
+dire = path.split('/')[-1]
+if dire != 'ldacs':
+    print("### ERROR: not in an 'ldacs' directory ... quitting")
+    sys.exit()
+
+verbose = False
+debug   = False
+
+Nfiles = len(sys.argv) 
+
+if (Nfiles == 2) & (not os.path.isfile(sys.argv[1])):
+    # here the argument contains wildcards that do not resolve into existing files
+    print("### ERROR: No files found: probably wildcards do not resolve into existing files - quitting")
+    sys.exit(9)
 
 
-parser = OptionParser()
-parser.add_option('-c','--catalog',dest='catalog',help='Input catalog', type='string', default="")
-parser.add_option('-o','--output', dest='output',help='Output catalog', type='string', default="")
-parser.add_option('-m','--magkey', dest='magkey',help='Magnitude keyword (def = MAG_AUTO)', type='string', default="MAG_AUTO")
-parser.add_option('-f','--flagval',dest='flagval',help='ISOLFLAG values (def = 256)', type='int', default=256)
+if Nfiles > 3: verbose = False
 
-parser.add_option('--fluxmax',dest='fluxmax',help='Saturation fluxmax value (def = no limit)', type='int',default=0)
-parser.add_option('--noplot', dest='noplot',help='Do not produce check plots (default : plot)', action='store_true', default=False)
+if (sys.argv[-1][:3] == 'ver'): 
+    verbose = True
+    print(" ####  Verbose mode ####")
+    Nfiles = Nfiles -1
 
-ismumax = 0
+if sys.argv[-1][:3] == 'deb': 
+    debug   = True
+    verbose = True
+    print(" ####  DEBUG mode ####")
+    Nfiles = Nfiles -1
 
-try:
-    options,args = parser.parse_args(sys.argv[1:])
-except:
-    print "Error ... check usage with flag_saturation.py -h "
-    sys.exit(1)
+print(">> found {:} files to process".format(Nfiles-1))
 
-trash = []
+#-----------------------------------------------------------------------------
+plot = True
+factor = 0.5             # to convert saturation to threshold
 
-# Check input catalog
-if not os.path.isfile(options.catalog):
-    print "Impossible to find the input catalog ..."
-    sys.exit(1)
-
-if options.output == "":
-    options.output = options.catalog.split(".ldac")[0]+"_noSAT.ldac"
-if os.path.isfile(options.output):
-    print "-- Output file already exists !"
-    sys.exit(1)
-
-### Tuning parameters ###########
-central_yratio = 0.6
-cental_width = 0.5
-nsig_center = 2.0
-nsig_nit = 2
-
-width_ylimits = [0.70,0.30]
-width_ybin = 0.5
-quartile = 0.93
-
-above_factor = 1.2
-abovehisto_binsize = 0.25
-maxhist_sweepthresh = 0.25
-
-final_thresh_expand = 0.1
-################################
-
-# Read the catalog
-pyim = pyfits.open(options.catalog)
-
-if not (options.fluxmax != 0 and options.noplot):
-    # Merge all extentions 
-    hdulist = merge_ldac(pyim)
-
-    # Get the mag / mu lists
-    fluxmax = hdulist[1].data.field("FLUX_MAX")
-    rem = len(fluxmax[fluxmax < 0])
-    if ( rem > 0):
-        print("## Attn: remove {:} negative FLUX_MAX values of {:}".format(rem, len(fluxmax)))
-    loc = fluxmax >= 0   # find possible neg values and remove them
-    fluxmax = fluxmax[loc]
-    mumax = -2.5* numpy.log10(fluxmax)
-
-    mag = hdulist[1].data.field(options.magkey)
-    mag = mag[loc]
-
-##    # Get mumax 
-##    if "MU_MAX" in hdulist[1].columns.names:
-##        mumax = hdulist[1].data.field("MU_MAX")
-##        ismumax = 1
-##    elif "FLUX_MAX" in hdulist[1].columns.names:
-##    else:
-##        print "Impossible to find MU_MAX or FLUX_MAX ..."
-##        sys.exit(1)
+for n in range(1, Nfiles):
+    orig = sys.argv[n]
     
+    pname = orig.split('_orig')[0] + "_satcheck.png"
+    if os.path.isfile(pname):
+        print("ATTN: {:} already done .. continue".format(pname))
+        continue
+
+    #-----------------------------------------------------------------------------
+    # copy back the original, if it exists
+    #-----------------------------------------------------------------------------
+    fname = orig.split('_orig')[0] + '.ldac'
+    com = "cp -a {:} {:}; chmod 644 {:}".format(orig, fname, fname)
+    #print(com); sys.exit()
+    os.system(com)
+
+    #-----------------------------------------------------------------------------
+    # Read the catalog and loop through all tables
+    #-----------------------------------------------------------------------------
     try:
-        rh = [x[1] for x in hdulist[1].data.field("FLUX_RADIUS")]
+        cat = fits.open(fname, mode='update')
     except:
-        rh = hdulist[1].data.field("FLUX_RADIUS")
+        print("ERROR: can't read {:}".format(fname))
+        continue
 
-    rh = rh[loc]
-    mu__mag = mumax - mag
+    # get filter from ext 1
+    hd1 = cat[1].data[0][0]
+    xxx = hd1[np.where(hd1.find('FILTER') == 0)[0]]  ; filt = xxx[0].split()[2][1]
 
-    # Put the data in a structured array
-    ngood = len(numpy.where(mumax < 90.0)[0])
-    
-    type_data = numpy.dtype([('index', numpy.float32),('rh', numpy.float32), ('mag', numpy.float32), ('mumax', numpy.float32), ('fluxmax', numpy.float32),('mu__mag', numpy.float32)])
-    data = numpy.zeros(ngood,dtype=type_data)
-    i0 = -1
-    for i,rh0,mag0,mumax0,fluxmax0,mu__mag0 in zip(range(len(rh)),rh,mag,mumax,fluxmax,mu__mag): 
-        if mumax0 < 90.0:
-            i0 += 1
-            data[i0] = (i0,rh0,mag0,mumax0,fluxmax0,mu__mag0)
+    if plot == True:
+        fig, axs = plt.subplots(4,4, sharex=True, sharey=True, figsize=(14,8))
+        plt.subplots_adjust(hspace=0.0, wspace=0.0)
 
-    # Get some limits in mu / mag
-    mumax_mode = get_mode(data['mumax'],0.2)
-    mumax_min = min(data['mumax'])
-    mumax_max = max(data['mumax'])
+    l_fwhm  = [] # lists for measured fwhm 
+    l_stdev = [] # its stdev
+    l_nstrs = [] # num selected stars
+    l_satur = [] # saturation level
+    l_bgd   = [] # mean background
 
-    #print mumax_min,mumax_max,mumax_mode
-    if mumax_min < mumax_mode - 10.0:
-        print "-- Problem with min mumax ", mumax_min
-    if mumax_max > mumax_mode + 10.0:
-        print "-- Problem with min mumax ", mumax_max
-    
-    # Get some limits in mu-mag
-    mu__mag_mode = get_mode(data['mu__mag'], 0.2)
+    for chip in range(1,17):
+        nn = chip - 1
+        nny = int(nn/4) ; nnx = nn - 4*nny 
+        ext = 2*chip
+        # --------- Read needed table columns --------- 
+        mag  = cat[ext].data.field("MAG_AUTO")
+        fmax = cat[ext].data.field("FLUX_MAX")   # special name for flagging
+        frad = cat[ext].data.field("FLUX_RADIUS")
+        flag = cat[ext].data.field("FLAGS")      # special name for flagging
+        bgd  = cat[ext].data.field("BACKGROUND") # 
 
-
-# Fixed saturation level ?
-if options.fluxmax != 0:
-    # ---- Flag the objects in the catalog ------
-    pyim = pyfits.open(options.catalog)
-    flag_ldac(pyim,options.output,"FLUX_MAX", options.fluxmax, 256)
-
-    # ---- Plot the results ----
-    if not options.noplot:
-        fig = plt.figure(1,figsize=(15,6))
-        data1 = data[numpy.where(data['mag'] < 30.0)]
-        data_sat = data1[numpy.where(data1['fluxmax'] > options.fluxmax)]
-    
-##        # Mumax/mag
-##        ax1 = fig.add_subplot(121)
-##        ax1.plot(data1['mag'],data1['mumax'], 'r.')
-##        ax1.plot(data_sat['mag'],data_sat['mumax'], 'b.')
-##        plt.xlabel('MAG')
-##        plt.ylabel('MU_MAX')
-##        
-##        fig.savefig("test.png")
+        # --------- find reference value --------- 
+#        if debug == True: print("DEBUG=0: chip {:} - {:} sources".format(chip,len(fmax)))
         
-        # rh/mag
-        ax2 = fig.add_subplot(122)
-        ax2.plot(data1['rh'],data1['mag'], 'r.')
-        ax2.plot(data_sat['rh'],data_sat['mag'], 'b.')
-        ax2.set_xlim([0, 10.0])
-        plt.xlabel('MAG')
-        plt.ylabel('RH (px)')
+        satval = np.max(fmax)    # chip saturation value ... simple method
+        # take second largest value as reference, if there are two
+        big = np.where(fmax > 0.9 * satval)[0]
+        sort = np.sort(fmax[big])
+        if len(big) >= 2:
+            satval = sort[-2]  
+        else:
+            satval = sort[-1]
+
+        if ((len(big) == 1) & (satval >= factor * 10000)): satval = factor * 10000
+            
+
+        # --------- set threshold --------- 
+        thresh = factor * satval # chip threshold value
+        if thresh <= 10000: thresh = 10000    # do not go below this level
+        l_satur.append(thresh)
+
+        #  --------- Now write keywords --------- 
+        if chip == 1: 
+            cat[0].header.set('TH_FACTR', factor, comment="saturation threshold factor")
+        cat[0].header.set('SATUR-{:02n}'.format(chip), np.log10(satval), comment="log(chip saturation level)")
+        cat[0].header.set('THRES-{:02n}'.format(chip), np.log10(thresh), comment="log(chip saturation threshold)")
+
+        #  --------- and do actual flagging --------- 
+        flag[fmax > thresh] = 7
+
+        #-----------------------------------------------------------------------------        
+        # now build plot
+        #-----------------------------------------------------------------------------
+        lt = np.log10(thresh) 
+        loc = ((mag < 50) & (fmax > 0)) #; print("--------------- chip", chip, len(loc)) # the valid values
+        mag  = mag[loc]
+        fmax = fmax[loc]
+        frad = frad[loc]
+        flag = flag[loc]
+        bgd  = np.mean(bgd[loc]) ; l_bgd.append(bgd)  # mean background level
+        # estimate best value of seeing 
+        stars = ((frad > 1) & (frad < 5) & (fmax > 1000) & (fmax < thresh))   # select the stars
+   ##     stars = ((frad > 1) & (frad < 10) & (fmax > 1000) & (fmax < thresh))   # select the stars  ###!!!
+#        if debug == True: print("DEBUG-1: {:} sources, {:} stars found ".format(len(frad), len(frad[stars])))
+        fwhm, low,upp = sigmaclip(frad[stars], low=2, high=2)
+        if debug == True: print("DEBUG-2: {:} sources, {:} stars found ==> {:} selected".format(len(frad), len(frad[stars]), len(fwhm)))
+        l_nstrs.append(len(frad[stars]))
+        mean_frad = np.mean(fwhm)  ; l_fwhm.append(mean_frad)
+        std_frad  = np.std(fwhm)   ; l_stdev.append(std_frad)
+        if debug == True: print("DEBUG-3: mean fvwm: {:0.2f}, stdev: {:0.2f}".format(mean_frad, std_frad))
+        if verbose == True: print(" {:2n}  {:4.2f}  {:5.0f}  {:5.0f}  {:5.0f}".format(chip, mean_frad,  bgd, thresh, bgd+satval))
+        cat[0].header.set('MFRAD-{:02n}'.format(chip), mean_frad, comment="typical flux_radius of stars")
+
+        if plot == True:
+            val = fmax < thresh
+            sat = fmax >= thresh
+            fff = flag >= 4
+           
+            axs[nny, nnx].plot(frad[val], np.log10(fmax[val]), 'b.', label='valid')
+            axs[nny, nnx].plot(frad[fff], np.log10(fmax[fff]), 'y.', label='SE flag', markersize=10)
+            axs[nny, nnx].plot(frad[sat], np.log10(fmax[sat]), 'rx', label='saturated', markersize=3)
+            # threshold
+            axs[nny, nnx].plot([0.5,3.89], np.log10([thresh,thresh]), linestyle='-.', color='r', lw=1)
+            axs[nny, nnx].annotate("%0.2f"%lt, (4, lt-0.09), xycoords='data', ha='left',  size=8)
+#            axs[nny, nnx].plot([-1,12], np.log10([bgd,bgd]), linestyle='-.', color='b', lw=0.5)
+            # mean flux_rad
+            axs[nny, nnx].plot([mean_frad, mean_frad], [1,5], linestyle='-.', color='g', lw=1)
+            axs[nny, nnx].annotate("%0.2f"%mean_frad, (mean_frad-0.1, 4.5), xycoords='data', ha='right',  size=8)
+            
+            axs[nny, nnx].set_xlim([-0.3,10.3]); axs[nny, nnx].set_ylim([1.9,4.9])
+            axs[nny, nnx].annotate('[%0i]'%chip, (10,2.0), xycoords='data', ha='right', size=10)
+            axs[nny, nnx].grid(color='grey', ls=':')
+            if nny == 3: axs[nny, nnx].set_xlabel('flux_radius', fontsize=8)
+            if nnx == 0: axs[nny, nnx].set_ylabel('log(flux_max)', fontsize=8)
+            if chip == 2: axs[nny, nnx].legend(loc='center right', fontsize=8)
+
         
-        outplot = options.output.split(".ldac")[0]+"_satcheck.png"
-        fig.savefig(outplot)
-        plt.clf()
+    str_nstrs = "Nstrs   " + ' '.join("{:5.0f}".format(x) for x in l_nstrs) + "\n"
+    str_fwhm  = "frad    " + ' '.join("{:5.2f}".format(x) for x in l_fwhm)  + "\n"
+    str_stdev = "stdev   " + ' '.join("{:5.2f}".format(x) for x in l_stdev) + "\n"
+    str_bgd   = "bgd     " + ' '.join("{:5.0f}".format(x) for x in l_bgd)   + "\n"
+    str_satur = "satur   " + ' '.join("{:5.0f}".format(x) for x in l_satur) + "\n"
+    if verbose == True: print(str_nstrs + str_fwhm + str_stdev + str_satur + str_bgd)
 
-
-    sys.exit(0)
-
-
-# --------- get central point in mumax_mag -----------
-central_y = mumax_mode - (mumax_mode-mumax_min)*central_yratio
-
-sample_central_ind = numpy.where((mumax < central_y+cental_width) & (mumax>central_y-cental_width)) 
-
-central_xc1 = numpy.median(mag[sample_central_ind])
-central_xc2 = get_mode(mag[sample_central_ind],0.1)
-central_yc = numpy.median(mumax[sample_central_ind])
-
-###print "Central point : ",central_xc1,central_xc2,central_yc
-
-# refine with a sigclipped mean
-(xc0,yc0) = refine_2D_center(mag,mumax,sample_central_ind,nsig_center,nsig_nit)
-###print "Refined Central point : ",xc0,yc0
-
-mu__mag_center = yc0 - xc0
-# -----------------------------------------------------------
-
-# --- Get the width of the stellar branch at several mumax ---
-width_ylimits_mumax = [mumax_mode - (mumax_mode-mumax_min)*x for x in width_ylimits]
-
-res_width = {}
-miny = width_ylimits_mumax[0]-width_ybin
-maxy = width_ylimits_mumax[0]
-last = 1
-n = 0
-###print "Get width in slices between %s and %s:" % (str(width_ylimits_mumax[0]),str(width_ylimits_mumax[1]))
-starbranch_width_mu__mag_vs_mumax = {}
-while last:
-    n += 1
-    miny +=     width_ybin
-    maxy +=     width_ybin
-    #print "    -- slice : ",miny,maxy
-
-    # Last slice
-    if maxy+width_ybin > width_ylimits_mumax[1]:
-        last = 0
-        maxy = width_ylimits_mumax[1]
+    # Write output data file with
+    code = "_satcheck"
+    outname = fname.split(".")[0] + code + ".dat"
+    outfile = open(outname, 'w')
+    outfile.write(str_nstrs + str_fwhm + str_stdev + str_satur + str_bgd)
+    outfile.close() ; print(">> Wrote " + outname)
     
-    # Get the sample
-    ind_slice = numpy.where((mumax<maxy) & (mumax>miny))
-    #print "    -- nobjects: ",len(ind_slice[0])
+    # Now finalize the plot
+    if plot == True:
+        outplot = fname.split(".")[0] + code + ".png"  
+        fig.suptitle(fname +" ("+filt+")", y=0.91)
+        if not debug == True: 
+            fig.savefig(outplot, bbox_inches="tight")
+            print("   - and " + outplot)
 
-    # Get the mag of the XX%th element
-    data_slice = data[numpy.where((data['mumax']<maxy) & (data['mumax']>miny))]
-    sname=options.catalog.split(".ldac")[0]+"_slice_"+str(n)
-    #print "    -- slice name: ", sname
+        plt.close()
 
-    file = open(sname,'w')
-    trash.append(sname)
-    for m1,m2 in zip(data_slice['mumax'],data_slice['mag']):
-        file.write("%s %s %s \n" % (str(m1),str(m2),str(m1-m2)))
-    file.close()
+    cat.close()
 
-    # Get the quartile in mumax
-    data_slice95 = numpy.sort(data_slice,order='mu__mag')[int(len(data_slice)*(1.0-quartile)):int(len(data_slice)*(quartile))]
-    
-    mumax_mean = numpy.mean(data_slice95['mumax'])
-    mumax_disp = numpy.std(data_slice95['mumax'])
-    
-    miny -= mumax_disp
-    maxy += mumax_disp
-    data_sliceb = data[numpy.where((data['mumax']<maxy) & (data['mumax']>miny))]
-    data_sliceb95 = numpy.sort(data_sliceb,order='mu__mag')[int(len(data_sliceb)*(1.0-quartile)):int(len(data_sliceb)*(quartile))]
-
-    # store the width of the stellar branch at different magnitudes
-    starbranch_width_mu__mag_vs_mumax[mumax_mean] = [data_sliceb95['mu__mag'][0],data_sliceb95['mu__mag'][-1]]
-
-# -----------------------------------------------------------
-# --------- Get the objects above the stellar branch --------
-
-thresh = min([x[1] for x in starbranch_width_mu__mag_vs_mumax.values()]) * above_factor
-
-data_tmp = numpy.sort(data,order='mu__mag')
-data_above = data_tmp[numpy.where(data_tmp['mu__mag'] > thresh)]
-
-# -----------------------------------------------------------
-
-# --------- Get a weighted histogramm -----------------------
-min = int(min(data_above['mumax'])) -1.0
-max = int(max(data_above['mumax'])) +1.0
-nbin = int((max-min)/abovehisto_binsize+1)
-
-datax = numpy.array([min+x*abovehisto_binsize for x in range(nbin)])
-datay = numpy.array([0]*nbin)
-for mumax,mag,mumag in zip(data_above['mumax'],data_above['mag'],data_above['mu__mag']):
-
-    for i,xx in enumerate(datax):
-        if mumax >= xx and mumax < xx+abovehisto_binsize:
-            datay[i] += mumag
-# -----------------------------------------------------------
-
-# ------------- Check plots ---------------
-##if not options.noplot:
-##    fig = plt.figure(1,figsize=(15,6))
-##
-##    # Mumax/mag
-##    ax1 = fig.add_subplot(121)
-##    ax1.plot(data['mag'],data['mumax'], 'r.')
-##    ax1.plot(data_above['mag'],data_above['mumax'], 'b.')
-##    plt.xlim(xmax=-6.0)
-##    fig.show()
-##    fig.savefig("test.png")
-##    
-##    # rh/mag
-##    ax2 = fig.add_subplot(122)
-##    ax2.plot(data['rh'],data['mag'], 'r.')
-##    ax2.plot(data_above['rh'],data_above['mag'], 'b.')
-##    ax2.set_xlim([0,10.0])
-##    plt.xlim(xmax=-6.0)
-##    fig.show()
-##    fig.savefig("above.png")
-##    plt.clf()
-##    
-##    # mumax histo
-##    n = len(numpy.where(datax<yc0)[0])
-##    max = numpy.max(datay[numpy.where(datax<yc0)])
-##
-##    fig1 = plt.figure(1,figsize=(15,6))
-##    ax11 = fig1.add_subplot(111)
-##    ax11.plot(datax,datay, 'b-o')
-##    ax11.set_ylim([0,max*3.0])
-##    fig1.savefig("histo_above.png")
-##    plt.clf()
-
-# -----------------------------------------
-
-# create structured array
-type_data = numpy.dtype([('mumax', numpy.float32),('val', numpy.float32)])
-data_histo = numpy.zeros((len(datax),),dtype=type_data)
-for i,x,y in zip(range(len(datax)),datax,datay):
-    data_histo[i] = (x,y)
-
-# --------- Get the mumax limit for saturated objects -----------
-maxhist = numpy.max(datay[numpy.where(datax<yc0)])
-maxhist_ind = numpy.where(datay == maxhist)[-1][0]
-mumode_ind = numpy.where(datax<mumax_mode)[0][-1]
-
-minhist = numpy.min(data_histo['val'][maxhist_ind:mumode_ind])
-minhist_ind0 = numpy.where(data_histo['val'][maxhist_ind:mumode_ind]==minhist)
-minhist_ind = minhist_ind0[0][0]+maxhist_ind
-
-new_minhist_ind = minhist_ind
-for i in range(minhist_ind-maxhist_ind):
-    val = data_histo['val'][minhist_ind-i]
-    if val < maxhist* maxhist_sweepthresh:
-        new_minhist_ind = minhist_ind-i
-
-final_thresh = data_histo['mumax'][new_minhist_ind] + final_thresh_expand
-
-
-if not options.noplot:
-    # ------------- Check plots ---------------
-    fig = plt.figure(1,figsize=(15,6))
-    
-    data_sat = data[numpy.where(data['mumax']<final_thresh)]
-    data_sat2 = data_sat[numpy.where(data_sat['mag'] < xc0 + 20.0)]
-    
-    
-    data1 = data[numpy.where(data['mag'] < xc0 + 20.0)]
-    
-    # Mumax/mag
-    ax1 = fig.add_subplot(121)
-    ax1.plot(data1['mag'],data1['mumax'], 'r.')
-    ax1.plot(data_sat2['mag'],data_sat2['mumax'], 'b.')
-    plt.xlabel('MAG')
-    plt.ylabel('MU_MAX')
-    
-    # rh/mag
-    ax2 = fig.add_subplot(122)
-    ax2.plot(data1['rh'],data1['mag'], 'r.')
-    ax2.plot(data_sat2['rh'],data_sat2['mag'], 'b.')
-    ax2.set_xlim([0,10.0])
-    plt.xlabel('MAG')
-    plt.ylabel('RH (px)')
-    
-    outplot = options.output.split(".ldac")[0]+"_checkplot.png"
-    fig.savefig(outplot)
-    plt.clf()
-    
-    # -----------------------------------------
-
-pyim.close()
-
-# ---- Flag the objects in the catalog ------
-pyim= pyfits.open(options.catalog)
-if ismumax:
-    flag_ldac(pyim,options.output,"MU_MAX",final_thresh,256)
-else:
-    flag_ldac(pyim,options.output,"FLUX_MAX",10**(-final_thresh/2.5),256)
-
-
-print ">> Done flag_saturation in "+options.catalog+"; threshold is MU_MAX: ", final_thresh
-
-for f in trash:
-    if os.path.isfile(f):
-        os.system("rm -f "+f)
+#-----------------------------------------------------------------------------
