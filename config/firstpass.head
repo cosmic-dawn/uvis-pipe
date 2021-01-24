@@ -1,0 +1,47 @@
+SIMPLE  =                    T / This is a FITS file                            
+BITPIX  =                  -32 /                                                
+NAXIS   =                    2 /                                                
+NAXIS1  =                19071 / Number of pixels along this axis               
+NAXIS2  =                15714 / Number of pixels along this axis               
+EXTEND  =                    T / This file may contain FITS extensions          
+EQUINOX =        2000.00000000 / Mean equinox                                   
+MJD-OBS =   5.520400000000E+04 / Modified Julian date at start                  
+RADECSYS= 'ICRS    '           / Astrometric system                             
+CTYPE1  = 'RA---TAN'           / WCS projection type for this axis              
+CUNIT1  = 'deg     '           / Axis unit                                      
+CRVAL1  =   1.500409942000E+02 / World coordinate on this axis                  
+CRPIX1  =   9.074500000000E+03 / Reference pixel on this axis                   
+CD1_1   =  -8.333333664000E-05 / Linear projection matrix                       
+CD1_2   =   0.000000000000E+00 / Linear projection matrix                       
+CTYPE2  = 'DEC--TAN'           / WCS projection type for this axis              
+CUNIT2  = 'deg     '           / Axis unit                                      
+CRVAL2  =   2.212211968000E+00 / World coordinate on this axis                  
+CRPIX2  =   7.483000000000E+03 / Reference pixel on this axis                   
+CD2_1   =   0.000000000000E+00 / Linear projection matrix                       
+CD2_2   =   8.333333664000E-05 / Linear projection matrix                       
+EXPTIME =   0.000000000000E+00 / Maximum equivalent exposure time (s)           
+GAIN    =   0.000000000000E+00 / Maximum equivalent gain (e-/ADU)               
+SATURATE=   0.000000000000E+00 / Saturation Level (ADU)                         
+COMMENT                                                                         
+SOFTNAME= 'SWarp   '           / The software that processed those data         
+SOFTVERS= '2.36.1  '           / Version of the software                        
+SOFTDATE= '2013-06-17'         / Release date of the software                   
+SOFTAUTH= '2010-2012 IAP/CNRS/UPMC' / Maintainer of the software                
+SOFTINST= 'IAP  http://www.iap.fr' / Institute                                  
+COMMENT                                                                         
+AUTHOR  = 'hjmcc   '           / Who ran the software                           
+ORIGIN  = 'fcix10  '           / Where it was done                              
+DATE    = '2017-10-02T15:25:21' / When it was started (GMT)                     
+COMBINET= 'MEDIAN  '           / COMBINE_TYPE config parameter for SWarp        
+COMMENT                                                                         
+COMMENT  Propagated FITS keywords                                               
+OBJECT  = 'paw1    '                                                            
+COMMENT                                                                         
+COMMENT  Axis-dependent config parameters                                       
+RESAMPT1= 'LANCZOS3'           / RESAMPLING_TYPE config parameter               
+CENTERT1= 'ALL     '           / CENTER_TYPE config parameter                   
+PSCALET1= 'MEDIAN  '           / PIXELSCALE_TYPE config parameter               
+RESAMPT2= 'LANCZOS3'           / RESAMPLING_TYPE config parameter               
+CENTERT2= 'ALL     '           / CENTER_TYPE config parameter                   
+PSCALET2= 'MEDIAN  '           / PIXELSCALE_TYPE config parameter               
+END                                                                             

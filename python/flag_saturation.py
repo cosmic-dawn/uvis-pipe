@@ -3,7 +3,7 @@
 #-----------------------------------------------------------------------------
 # Flag saturated objects in ldacs:  
 # this version takes the files from the input line; must be run from the
-# directory containing the files.  I looks for the original ldac, copies
+# directory containing the files.  It looks for the original ldac, copies
 # it, then flags the saturated source and writes some information kwds in
 # the primary header.
 #
@@ -18,26 +18,21 @@ import numpy as np
 import astropy.io.fits as fits
 from scipy.stats import sigmaclip
 
-import matplotlib as mpl
-mpl.rcParams['xtick.direction'] = 'in'
-mpl.rcParams['ytick.direction'] = 'in'
-mpl.rcParams['xtick.top'] = "True"
-mpl.rcParams['ytick.right'] = "True"
-mpl.rcParams['xtick.labelsize'] = 8
-mpl.rcParams['ytick.labelsize'] = 8
-mpl.rcParams['xtick.minor.visible'] = True
-import matplotlib.pyplot as plt
-
 path = os.getcwd(); 
 dire = path.split('/')[-1]
-if dire != 'ldacs':
-    print("### ERROR: not in an 'ldacs' directory ... quitting")
-    sys.exit()
+#if dire != 'ldacs':
+#    print("### ERROR: not in an 'ldacs' directory ... quitting")
+#    sys.exit()
 
 verbose = False
 debug   = False
 
 Nfiles = len(sys.argv) 
+
+if (Nfiles == 1):
+    print(" ### ERROR: must give files to process ... ")
+    print(" ### SYNTAX:  flag_saturation.py files ")
+    sys.exit()
 
 if (Nfiles == 2) & (not os.path.isfile(sys.argv[1])):
     # here the argument contains wildcards that do not resolve into existing files
@@ -62,7 +57,24 @@ print(">> found {:} files to process".format(Nfiles-1))
 
 #-----------------------------------------------------------------------------
 plot = True
+plot = False
 factor = 0.5             # to convert saturation to threshold
+#-----------------------------------------------------------------------------
+
+if plot == True:
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+    mpl.rcParams['xtick.direction'] = 'in'
+    mpl.rcParams['ytick.direction'] = 'in'
+    mpl.rcParams['xtick.top'] = "True"
+    mpl.rcParams['ytick.right'] = "True"
+    mpl.rcParams['xtick.labelsize'] = 8
+    mpl.rcParams['ytick.labelsize'] = 8
+    mpl.rcParams['xtick.minor.visible'] = True
+
+#-----------------------------------------------------------------------------
+# now for real work:
+#-----------------------------------------------------------------------------
 
 for n in range(1, Nfiles):
     orig = sys.argv[n]
@@ -77,7 +89,7 @@ for n in range(1, Nfiles):
     #-----------------------------------------------------------------------------
     fname = orig.split('_orig')[0] + '.ldac'
     com = "cp -a {:} {:}; chmod 644 {:}".format(orig, fname, fname)
-    #print(com); sys.exit()
+#    print(com); sys.exit()
     os.system(com)
 
     #-----------------------------------------------------------------------------
@@ -97,12 +109,14 @@ for n in range(1, Nfiles):
         fig, axs = plt.subplots(4,4, sharex=True, sharey=True, figsize=(14,8))
         plt.subplots_adjust(hspace=0.0, wspace=0.0)
 
-    l_fwhm  = [] # lists for measured fwhm 
+    l_fwhm  = [] # lists for mean fwhm of stars
     l_stdev = [] # its stdev
-    l_nstrs = [] # num selected stars
+    l_nstrs = [] # num selected as stars
+    l_nsat  = [] # num saturated
     l_satur = [] # saturation level
     l_bgd   = [] # mean background
 
+    print(">> Begin loop on chips")
     for chip in range(1,17):
         nn = chip - 1
         nny = int(nn/4) ; nnx = nn - 4*nny 
@@ -128,19 +142,25 @@ for n in range(1, Nfiles):
 
         if ((len(big) == 1) & (satval >= factor * 10000)): satval = factor * 10000
             
-
         # --------- set threshold --------- 
         thresh = factor * satval # chip threshold value
         if thresh <= 10000: thresh = 10000    # do not go below this level
         l_satur.append(thresh)
 
-        #  --------- Now write keywords --------- 
+        # --------- Num objects to flag (above threshold) --------- 
+        to_flag = np.where(fmax > thresh)[0]
+      #  print(chip, len(flag), len(to_flag))
+      #  np.set_printoptions(precision=2); print(np.sort(frad[to_flag]))
+        l_nsat.append(len(to_flag))
+
+        # --------- Now write keywords --------- 
         if chip == 1: 
             cat[0].header.set('TH_FACTR', factor, comment="saturation threshold factor")
         cat[0].header.set('SATUR-{:02n}'.format(chip), np.log10(satval), comment="log(chip saturation level)")
         cat[0].header.set('THRES-{:02n}'.format(chip), np.log10(thresh), comment="log(chip saturation threshold)")
 
-        #  --------- and do actual flagging --------- 
+        # --------- and do actual flagging --------- 
+        print(">> chip {:02n} - flag {:02n} detections".format(chip, len(to_flag)))
         flag[fmax > thresh] = 7
 
         #-----------------------------------------------------------------------------        
@@ -177,7 +197,6 @@ for n in range(1, Nfiles):
             # threshold
             axs[nny, nnx].plot([0.5,3.89], np.log10([thresh,thresh]), linestyle='-.', color='r', lw=1)
             axs[nny, nnx].annotate("%0.2f"%lt, (4, lt-0.09), xycoords='data', ha='left',  size=8)
-#            axs[nny, nnx].plot([-1,12], np.log10([bgd,bgd]), linestyle='-.', color='b', lw=0.5)
             # mean flux_rad
             axs[nny, nnx].plot([mean_frad, mean_frad], [1,5], linestyle='-.', color='g', lw=1)
             axs[nny, nnx].annotate("%0.2f"%mean_frad, (mean_frad-0.1, 4.5), xycoords='data', ha='right',  size=8)
@@ -190,18 +209,23 @@ for n in range(1, Nfiles):
             if chip == 2: axs[nny, nnx].legend(loc='center right', fontsize=8)
 
         
-    str_nstrs = "Nstrs   " + ' '.join("{:5.0f}".format(x) for x in l_nstrs) + "\n"
+    print(">> Finished loop on chips")
+    cat.close()
+
+    # strings for output data table
+    str_satur = "thresh  " + ' '.join("{:5.0f}".format(x) for x in l_satur) + "\n"
+    str_nsat  = "Nsatur  " + ' '.join("{:5.0f}".format(x) for x in l_nsat)  + "\n"
+    str_nstrs = "Nsatrs  " + ' '.join("{:5.0f}".format(x) for x in l_nstrs) + "\n"
     str_fwhm  = "frad    " + ' '.join("{:5.2f}".format(x) for x in l_fwhm)  + "\n"
     str_stdev = "stdev   " + ' '.join("{:5.2f}".format(x) for x in l_stdev) + "\n"
     str_bgd   = "bgd     " + ' '.join("{:5.0f}".format(x) for x in l_bgd)   + "\n"
-    str_satur = "satur   " + ' '.join("{:5.0f}".format(x) for x in l_satur) + "\n"
     if verbose == True: print(str_nstrs + str_fwhm + str_stdev + str_satur + str_bgd)
 
     # Write output data file with
     code = "_satcheck"
     outname = fname.split(".")[0] + code + ".dat"
     outfile = open(outname, 'w')
-    outfile.write(str_nstrs + str_fwhm + str_stdev + str_satur + str_bgd)
+    outfile.write(str_satur + str_nsat + str_nstrs + str_fwhm + str_stdev + str_bgd)
     outfile.close() ; print(">> Wrote " + outname)
     
     # Now finalize the plot
@@ -214,6 +238,5 @@ for n in range(1, Nfiles):
 
         plt.close()
 
-    cat.close()
 
 #-----------------------------------------------------------------------------

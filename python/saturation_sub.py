@@ -102,7 +102,7 @@ def merge_ldac(pyim,list_extent=""):
     return hdulist
 
 #-----------------------------------------------------------------------------
-# Flag a catalog - original version: same value for all chipa
+# Flag a catalog - original version: same value for all chips
 #-----------------------------------------------------------------------------
 def flag_ldac(pyim, out, key, val, flagval):
 
@@ -116,7 +116,7 @@ def flag_ldac(pyim, out, key, val, flagval):
             list_ext.append(i)
 
     # Flag it
-    list_tables = []
+#    list_tables = []
     nrows = 0
     for i in list_ext:
         hdu = pyim[i]
