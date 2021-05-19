@@ -32,7 +32,7 @@ if [ $# -eq 0 ]; then # || [ $1 == 'help' ] || [ $1 == '-h' ]; then
 fi 
 
 if [[ "${@: -1}" =~ 'dry' ]] || [ "${@: -1}" == 'test' ]; then dry=T; else dry=F; fi
-if [[ "${@: -1}" =~ 'aut' ]]; then auto=T; else auto=F; fi
+if [[ "${@: -1}" =~ 'aut' ]]; then pauto=T; else pauto=F; fi
 if [[ "${@: -1}" =~ 'int' ]]; then int=T;  else int=F;  fi
 if [[ "${@: -1}" =~ 'env' ]]; then dry=T; fi
 
@@ -200,6 +200,10 @@ fi
 nimages=$(cat $WRK/images/list_images | wc -l)
 imroot=$(head -$(($nimages / 2))  $WRK/images/list_images | tail -1 | cut -d\. -f1 | cut -d\/ -f2 )
 
+#
+DR5=/n08data/UltraVista/DR5/
+bpmdir=/n08data/UltraVista/DR5/bpms
+
 #-----------------------------------------------------------------------------------------------
 
 ec "   #=================================================#"
@@ -282,7 +286,7 @@ elif [[ $1 =~ 'prel' ]]; then      # prelim: count, decompress, build rejected l
 
     #-----------------------------------------------------------------------------
     
-    if [ $auto == 'T' ]; then                                 # END P0
+    if [ $pauto == 'T' ]; then                                 # END P0
         ec "#-----------------------------------------------------------------------------"
         ec "# $pcurr finished; ==> auto continue to $pnext"
         ec "#-----------------------------------------------------------------------------"
@@ -297,7 +301,7 @@ elif [[ $1 =~ 'prel' ]]; then      # prelim: count, decompress, build rejected l
 elif [[ $1 =~ 'setu' ]]; then      # setup: to build test areas ... NOT IMPLEMENTED
 #-----------------------------------------------------------------------------------------------
    
-    bpmdir='$DR5/bpms'
+    bpmdir=/n08data/UltraVista/DR5/bpms
     rootdir=${WRK%/$FILTER}"/RawData/$FILTER" 
 
     echo "## CASU data (.fit files) in $rootdir"
@@ -412,7 +416,7 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
     else
         rcurr=R3
         ec "#-----------------------------------------------------------------------------"
-        ec "## - R3/ convert $nimages images to WIRCam format (keyword conversion)"
+        ec "## - R3: convert $nimages images to WIRCam format (keyword conversion)"
         ec "#-----------------------------------------------------------------------------"
         
         rm -f chunk_?.lst ../convert_all
@@ -501,7 +505,7 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
     else
         rcurr=R4
         ec "#-----------------------------------------------------------------------------"
-        ec "## - R4/ on flats: remove PV from the headers and normalise" 
+        ec "## - R4: on flats: remove PV from the headers and normalise" 
         ec "#-----------------------------------------------------------------------------"
  
         module=pfixFlats.sh
@@ -737,13 +741,6 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
         echo  "# qFits runs successfull ...  GOOD JOB!! " > $WRK/qFits.DONE
     fi
 
-#   echo "### QUIT HERE FOR NOW ###" ; exit 0    
-
-###  To Do .....       
-# edit qfits.sh as needed - see EB's email
-# really necessary to build flag file?
-# redo fix of COSMOS files as per Bo's instructions
-
     #----------------------------------------------------------------------------------------------#
     #       Get psf stats from psfex
     #----------------------------------------------------------------------------------------------#
@@ -838,7 +835,7 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
     fi  
 #    echo "### QUIT HERE FOR NOW ###" ; exit 0    
 
-    if [ $auto == 'T' ]; then                                 # END P1
+    if [ $pauto == 'T' ]; then                                 # END P1
         ec "#-----------------------------------------------------------------------------"
         ec "# $pcurr finished; ==> auto continue to $pnext"
         ec "#-----------------------------------------------------------------------------"
@@ -848,7 +845,7 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
         ec "#                                End of $pcurr "
         ec "#-----------------------------------------------------------------------------"
     fi
-    echo "### QUIT HERE FOR NOW ###" ; exit 0       
+#    echo "### QUIT HERE FOR NOW ###" ; exit 0       
 #-----------------------------------------------------------------------------------------------
 elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, build obj masks
 #-----------------------------------------------------------------------------------------------
@@ -862,6 +859,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
 #%------------------------------------------------------------------
 
     mycd $WRK/images
+#    nn=$(ls UVIS*p1.fits UVIS*p1_weight.fits UVIS*p1_ob_flag.fits 2> /dev/null | wc -l )  # DR4
     nn=$(ls UVIS*p1.fits UVIS*p1_weight.fits UVIS*p1_ob_flag.fits 2> /dev/null | wc -l )
     if [ $nn -eq 3 ]; then
         ec "# Found $nn UVIS*.fits files - looks like P2 has been done already ... quitting"
@@ -889,7 +887,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         cd weights; ls -1 v20*_weight.fits > ../list_weights; cd -
     fi
 
-    if [ ! -s list_heads  ]; then 
+    if [ ! -e list_heads  ]; then 
         ec "WARNING: list_heads not found ... build it"
         cd heads; ls -1 v20*.head > ../list_heads; cd -
     fi
@@ -900,7 +898,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
     nheads=$(cat list_heads   | wc -l)
     
     if [ $nimages -eq $nldacs ]; then 
-        ec "CHECK: found $nimages images, $nwghts weights, $nldacs ldacs ... " 
+        ec "CHECK: found $nimages images, $nwghts weights, $nldacs ldacs, $nheads head files ... " 
         ec "CHECK: ... seems ok to continue with first pass."
     else
         ec "!!! PROBLEM: Number of images, ldacs, weights not the same ..."
@@ -913,14 +911,17 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
     ec "##          ======  BEGIN FIRST PASS  ======"
     ec "#"
     ec "##----------------------------------------------------------------------------"
-    
+
+	# Some product names
+    stout=UVISTA_${FILTER}_p1              # name of pass1 stack w/o .fits extension (low res)
+    stout_flag=${stout%.fits}_obFlag.fits  # and the object flag
 
     #----------------------------------------------------------------------------------------#
     #       scamp
     #----------------------------------------------------------------------------------------#
     # check whether scamp has already been run ... 
 
-    nn=$(ls -1 $WRK/images/scamp/pscamp_p??.out 2> /dev/null | wc -l)
+    nn=$(ls -1 $WRK/images/scamp/pscamp_p??.out 2> /dev/null | wc -l) #  ; echo $nn
 
     if [ $nn -eq 3 ] && [ $nheads -eq $nimages ]; then
         ec "CHECK: scamp logfile already exists and found $nheads head files ..." 
@@ -937,7 +938,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         nsec=30  # wait loop check interval
 
         # split by paws
-        if [ -e list_paw0 ]; then
+        if [ -e list_paw0 ]; then   # N-band: paws 0-3 only
             cat list_paw1 list_paw0 | sed 's/fits/ldac/' > list_paw14
             sed 's/fits/ldac/' list_paw2 > list_paw25
             sed 's/fits/ldac/' list_paw3 > list_paw36
@@ -970,16 +971,14 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
             ec "# Built $qfile for $plist with $nn entries"
             echo  "qsub $qfile ; sleep 2" >> $WRK/pscamp.submit
         done
+
         ec "# ==> Built \$WRK/pscamp.submit with $(cat $WRK/pscamp.submit | wc -l) entries"
-        ec "#     ... and found $(ls v20*_0????.ldac | wc -l) ldacs "
-        ec "# wait loop check interval: $nsec sec"
-        ec "# PBS params: $(grep nodes= $qfile | cut -d\  -f3)"
         ec "#-----------------------------------------------------------------------------"
 
         if [ $dry == 'T' ]; then 
-            ec "#   >> BEGIN dry-run of pscamp.sh:  << "
+            ec "#   >> BEGIN dry-run of $(echo $qfile | cut -d\/ -f6):  << "
             $qfile dry
-            ec "   >> FINISHED dry-run of $0 finished .... << "
+            ec "#   >> FINISHED dry-run of $0 finished .... << "
             exit 0
         fi
 
@@ -987,23 +986,26 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         ec "# Now for real work ...."
         #-----------------------------------------------------------------------------
 
-        ec "# Clean up: rm flxscale.dat v20*.head"
+        ec "# - Clean up: rm flxscale.dat v20*.head"
         rm -rf fluxscale.dat v20*.head
+
+		ec "# - Bild links to needed files:"
+		if [ ! -e scamp_dr5.conf ]; then ln -sf $confdir/scamp_dr5.conf . ; fi
+		if [ ! -e vista_gaia.ahead ]; then ln -sf $confdir/vista_gaia.ahead . ; fi
+		if [ ! -e GAIA-EDR3_1000+0211_r61.cat ]; then ln -sf $confdir/GAIA-EDR3_1000+0211_r61.cat . ; fi
 
         #-----------------------------------------------------------------------------
         mycd $WRK   # to submit jobs and wait for them to finish
         #-----------------------------------------------------------------------------
 
-        ec "# Submitting pscamp_p?? jobs ..."
+        ec "# - Submitting pscamp_p?? jobs ..."
         source pscamp.submit
         ec " >>>>   wait for pscamp to finish ...   <<<<<"
         
         btime=$(date "+%s"); sleep 20   # before starting wait loop
         while :; do              #  begin qsub wait loop for pscamp
-        #### ATTN: don't understand why out files are goint into images dir ####
             njobs=$(ls images/pscamp_p??.out 2> /dev/null | wc -l)
             [ $njobs -eq 3 ] && break               # jobs finished
-#           echo -n "  .... wait $nsec ...."
             sleep $nsec
         done  
         mv images/pscamp_p??.out .
@@ -1039,7 +1041,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         mycd $WRK/images
         fsfile=fluxscale.dat    
         grep FLXSCALE v20*.head | cut -d\/ -f1 | sed 's/.head:FLXSCALE=//' | sort -k1 -u | \
-            awk '{printf "%-16s %10.3e %7.3f \n", $1, $2, 2.5*log($2)/log(10) }' > $fsfile
+            awk '{printf "%-16s %10.6f %8.4f \n", $1, $2, 2.5*log($2)/log(10) }' > $fsfile
 
         nfs=$(cat $fsfile | wc -l)   
         if [ $nfs -eq 0 ]; then
@@ -1059,39 +1061,46 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         fi
 
         ec "#-----------------------------------------------------------------------------"
-#       grep pscamp.sh pscamp.out
-#       ec "#-----------------------------------------------------------------------------"
         ec "CHECK: pscamp.sh successful, $nheads head files built ... clean-up and continue"
         if [ ! -d heads ] ; then mkdir heads ; else rm -f heads/* ; fi
         mv v20*.head heads   #####; ln -s scamp/v*.head .
         if [ ! -d scamp ] ; then mkdir scamp ; else rm -f scamp/* ; fi
-        mv fgroups*.png ???err*.png ../pscamp_p??.warn pscamp* fluxscale.dat list_paw?? scamp
-        mv ../pscamp_p??.??? scamp 
-        rm GAIA*.cat scamp_dr5.conf vista_gaia.ahead
+        mv fgroups*.png ???err*.png pscamp* fluxscale.dat list_paw?? scamp
+        mv ../pscamp_p??.* scamp 
+        #rm GAIA*.cat scamp_dr5.conf vista_gaia.ahead
+		rm -f v20*.ldac    # normally not there
 
         ec "#-----------------------------------------------------------------------------"
         if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
     
+#	if [ $nl -lt 100 ]; then exit 0; fi   #  DEBUG ... stop here if testing
+
     #----------------------------------------------------------------------------------------#
-    #       destripe casu images - p1
+    #       destripe casu images - p1 (maybe)
     #----------------------------------------------------------------------------------------#
-    # NB: destriping requires masks, which we don't have yet ... skip this
-    # 
+    # NB: destriping requires masks, which we don't have yet ... skip this at first
+    #     but could do it on a second run once flag is build
     # 
     #----------------------------------------------------------------------------------------#
 
+	if [ ! -e $stout_flag ]; then
+		ec "# $stout_flag not found "
+		destripe=F
+	else
+		destripe=T
+	fi
+
     # check if destripe already done
-    destripe=0
 #   if [ -e destripe_p1/destripe.log ]; then
-    if [ $destripe != 1 ]; then
-        ec "skip destriping - masks not yet available ..."
+    if [ $destripe == 'F' ]; then
+        ec "# ATTN: skip destriping "
 #       ec "CHECK: Found destripe_p1/destripe.log - destriping already done ..."
 #       ec "CHECK: ==> skip to next step "
         ec "#-----------------------------------------------------------------------------"
     else 
         rcurr=R8
-        ec "## - R8:  destripe.sh: destripe $nimages casu images  (disabled/skipped) "
+        ec "## - R8:  destripe.sh: destripe $nimages casu images  "
         ec "#-----------------------------------------------------------------------------"
         rm -f destripe.submit estats destripe_??.log  destripe_??.sh
 
@@ -1190,8 +1199,6 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
     # 
     #----------------------------------------------------------------------------------------#
 
-    stout=stack_${FILTER}_p1   # output intermediate stack w/o .fits extension - for low res
-
     # check if swarp alreay done:
     nsubima=$(ls -1 substack_paw?_??.fits 2> /dev/null | wc -l) # ; echo $nsubima ; echo $npaws
     if [ $nsubima -ge 2 ]; then 
@@ -1212,16 +1219,16 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
 
         # build links to files (external)
         rm -f $WRK/pswarp1.submit $WRK/estats$WRK/pswarp1_paw?_??.sh  pswarp1_paw?_??.???     # just in case
-        headfile=firstpass.head
+#        headfile=firstpass.head
+        headfile=std1G.head
         subsky=Y                             # for pass1 DO subtract sky
-#       subsky=N                             # for pass1 destriped, DO NOT subtract sky
 
         ec "#-------------------------------------------------------#"
         ec "#### ATTN: head-file: $headfile"
         ec "#### ATTN: subsky:    $subsky"
         ec "#-------------------------------------------------------#"
 
-        nim=480  # approx num of images in each sublist
+        nim=450  # approx num of images in each sublist
         for list in list_paw[0-9]; do  
             nl=$(cat $list | wc -l)   
 
@@ -1246,7 +1253,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
             done
         done 
         nq=$(cat $WRK/pswarp1.submit | wc -l)
-        ec "# ==> written to file \WRK/pswarp.submit with $nq entries "     
+        ec "# ==> written to file \$WRK/pswarp.submit with $nq entries "     
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
 
@@ -1300,8 +1307,8 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         fi
 
         if [ ! -d swarp_p1 ]; then mkdir swarp_p1; fi
-        mv pswarp1_*_??.log pswarp1_*.out ../pswarp1*.sh pswarp1*.warn list_paw? swarp_p1
-        mv  substack*clip.log substack*.xml  swarp_p1
+        mv pswarp1_*_??.??? ../pswarp1*.sh pswarp1*.warn pswarp1.submit.log  swarp_p1
+        mv substack*clip.log substack*.xml  swarp_p1
         rm substack*_??.head
 
         ec "#-----------------------------------------------------------------------------"
@@ -1313,8 +1320,6 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
     #          merge p1 substacks
     #----------------------------------------------------------------------------------------#
     
-    stout=UVISTA_${FILTER}_p1   # output intermediate stack w/o .fits extension
-
     if [ -e $stout ]; then 
         ec "#CHECK: stack $stout already built; "
         ec "#       ==> continue with building its mask and flag"
@@ -1364,7 +1369,7 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
         mv substack_paw?_??.fits substack_paw?_??_weight.fits swarp_p1
     fi
 
-    if [ $auto == 'T' ]; then                                 # END P2
+    if [ $pauto == 'T' ]; then                                 # END P2
         ec "#-----------------------------------------------------------------------------"      
         ec "# $pcurr finished ... good job!!! ==> auto continue to $pnext"
         ec "#-----------------------------------------------------------------------------"      
@@ -1376,9 +1381,9 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
     fi
 
 #-----------------------------------------------------------------------------------------------
-elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best sky 
+elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, find and remove best sky 
 #-----------------------------------------------------------------------------------------------
-    echo "### QUIT HERE FOR NOW ###" ; exit 0       
+#    echo "### QUIT HERE FOR NOW ###" ; exit 0       
 
 #% P3: add CASU sky then determine and remove best sky 
 #% - first add casu sky to wircam images to build with_sky images
@@ -1388,44 +1393,56 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
 #%   . then do add'l clening: bgd removal and destriping
 #%------------------------------------------------------------------
 
-#    ec "#-----------------------------------------------------------------------------"
-#    ec "## P3: add CASU sky then determine and remove best sky with proper mask"
-#    ec "#-----------------------------------------------------------------------------"
+	# for DR5, use DR4 products as input for building local obMasks
+    stout=UVISTA-DR4-RC2a_${FILTER}_full_lr     # name of pass1 stack w/o .fits extension (low res)
+    stout_flag=${stout%.fits}_obFlag.fits  # and the object flag
+
     ncurr=3 ; pcurr="p$ncurr" ; pprev=$(($ncurr-1)) ; pnext="p$(($ncurr+1))"
     mycd $WRK/images
 
     # check that P2 finished properly
-    nimages=$(ls -1L v20*_0????.fits 2> /dev/null | wc -l)  
-    nlist=$(cat list_images | wc -l)
+    nimages=$(ls -1L origs/v20*_0????.fits 2> /dev/null | wc -l)  
+	nlist=$(cat list_images | wc -l)
 
     if [ $nimages -gt 0 ]; then 
         ec "CHECK:  found $nimages image files like: " 
-        ecn " ==> "; ls -lh v20*_0????.fits | head -1 | tr -s ' ' | cut -d' ' -f9-12
+        ecn " ==> "; ls -lh origs/v20*_0????.fits | head -1 | tr -s ' ' | cut -d' ' -f9-12
     else
-        ec "!!! BIG PROBLEM: No image files found, or links not valid"
-        ls -lh v20*_0????.fits | head -1  ; askuser
-    fi
-   
+#        ec "!!! BIG PROBLEM: No image files found, or links not valid"
+#        ls -lh v20*_0????.fits | head -1  ; askuser
+		ec "# Build links to images "
+		ln -sf origs/v20*_?????.fits . 
+#		ln -sf heads/v20*_?????.head . 
+#		ln -sf weights/v20*_?????_weight.fits . 
+		nimages=$(ls -1L v20*_0????.fits 2> /dev/null | wc -l)  
+	fi
+			
     if [ $nimages -ne $nlist ]; then
         ec "CHECK: list images contains $nlist files, != $nimages ... "; askuser
     fi
 
-    p1stack=$(ls -1L UVIS*p1.fits UVIS*p1_weight.fits UVIS*p1_ob_flag.fits  2> /dev/null| wc -l)
+	## build links to dr4 final products:
+	#dr4=/n05data/UltraVista/RC2a
+    #ln -sf $dr4/$stout.fits 
+	#ln -sf $dr4/${stout%.fits}_weight.fits .
+
+    p1stack=$(ls -1L ${stout}.fits ${stout}_weight.fits ${stout_flag}  2> /dev/null| wc -l)
     if [ $p1stack -eq 3 ]; then
         ec "CHECK: found expected p1 stack products ... "
     else 
-        ec "PROBLEM: need the pass1 stacks to proceed ... quitting "; exit 1
+        ec "PROBLEM: need the pass1 stacks to proceed ... quitting "
+		ec " ... files like $stout.fits"; exit 1
     fi
     ec "# Looks like it's ok to continue ... " 
     ec "#-----------------------------------------------------------------------------"
 
     # ----------------------  Finished checking  ----------------------
 
-    # build zeroes files:
-    if [ ! -e zeroes.fits ]; then
-        lbpm=$(\ls -t ../calib/bpm* | head -1)
-        ln -s $lbpm zeroes.fits
-    fi
+    # build zeroes files: last valid bpm file
+#	ln -sf $bpmdir/bpm*.fits .   # link to bpms
+    lbpm=$(\ls -t $bpmdir/bpm*.fits | head -1) # last bpm to use as zeroes.file
+    rm -f zeroes.fits # should there be one already
+    ln -s $lbpm zeroes.fits
 
 
     #----------------------------------------------------------------------------------------------#
@@ -1437,8 +1454,8 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
     # 
     #----------------------------------------------------------------------------------------------#
 
-    nmsk=$(ls -1 v20*_mask.fits 2> /dev/null | wc -l )
-    nl=$(ls mkMasks_*.log 2> /dev/null| wc -l)           #;    echo $nimages $nmsk
+    nmsk=$(ls -1 Masks/v20*_mask.fits 2> /dev/null | wc -l )
+    nl=$(ls Masks/mkMasks_*.log 2> /dev/null| wc -l)           #;    echo $nimages $nmsk
 
     if [ $nl -ge 1 ] && [ $nmsk -ge $nimages  ]; then
         ec "CHECK: found $nl mkMasks logfile and $nmsk _mask files ... "
@@ -1462,7 +1479,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         ec "# split into $nts chunks of about $nexp images"
 
         if [ $nts -lt 55 ]; then nts=55; fi
-        if [ $nimages -lt 50 ]; then nts=3; fi  # for testing
+        if [ $nimages -lt 210 ]; then nts=9; fi  # for testing
         split -n l/$nts $list --additional-suffix='.lst' mkMasks_
 
         for l in mkMasks_??.lst; do
@@ -1480,7 +1497,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
 
-        ec "# Submit qsub files ... ";  source qall >> $pipelog
+        ec "# Submit qsub files ... ";  source qall
         ec " >>>>   wait for $nts mkMasks jobs ... first check in 1 min  <<<<<"
         
         btime=$(date "+%s.%N"); sleep 60     # before starting wait loop
@@ -1513,22 +1530,29 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         if [ $nnew -lt $nimages ]; then
             ec "CHECK: found only $nnew mask files; $(($nimages-$nnew)) missing...."
             askuser
+		else
+			ec "CHECK: found all $nnew expected mask files "
         fi
         
         # check for amonalies in masks: in mkMasks_??.dat
         rm -f mkMasks.dat                # clean up before building it
-        cat mkMasks_??.dat >> mkMasks.dat
+        cat mkMasks_??.dat > mkMasks.dat
         nn=$(grep '\ 0\.00\ ' mkMasks.dat | wc -l)
         if [ $nn -gt 0 ]; then
             ec "PROBLEM: $nn files with one or more chips fully masked: check mkMasks_??.dat"
             askuser
         fi
 
+		# mv new _mask files to Masks dir for safekeeping; and make links 
+		# ... needed for updateWeights later
+        if [ ! -d Masks ]; then mkdir Masks; fi
+		mv v20*_mask.fits mkMasks_*.* Masks 
+		chmod 444 Masks/v20*_mask.fits
+		
         ec "#-----------------------------------------------------------------------------"
         if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
     
-
     #----------------------------------------------------------------------------------------------#
     #       Add casu sky
     #----------------------------------------------------------------------------------------------#
@@ -1557,14 +1581,22 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         ec "#-----------------------------------------------------------------------------"
         rm -f qall  addSky_??.??? addSky_??.sh   
 
-        sky1=$(ls -1 ../calib/sky*.fits | head -1)
-        if [ ! -e ${sky1#../calib/} ]; then
-            ec "# Build links to sky and bpm files."
-            ln -sf ../calib/sky_*.fits . ; ln -sf ../calib/bpm_*.fits .
-        fi
-        
+        sky1=$(ls -1 $WRK/calib/sky*.fits | head -1)
+		nn=$(ls v20*_?????.fits 2> /dev/null | wc -l)  
+		nl=$(cat list_images | wc -l)
+		if [ $nn -ne $nl ]; then
+			ec "==> Found only $nn image files of $nl expected ..."
+			ec "==> Build links to image files"
+			ln -sf origs/v20*_?????.fits .
+		fi
+
+		# Build links to sky and bpm files
+		rm -f sky_*.fits bpm_*.fits
+        ec "# Build links to sky files."; ln -s $WRK/calib/sky_*.fits . 
+        ec "# Build links to bpm files."; ln -s $DR5/bpms/bpm_*.fits .
+       
         # split the list into chunks of max 1200 images, normally doable in 32 hrs hr:
-        if [ $nimages -lt 50 ]; then nts=5; else nts=12; fi
+        if [ $nimages -lt 220 ]; then nts=5; else nts=12; fi
         for f in $(cat $list); do grep $f ../FileInfo.dat >> fileinfo.tmp; done
         split -n l/$nts fileinfo.tmp --additional-suffix='.lst' addSky_
         rm fileinfo.tmp
@@ -1583,7 +1615,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
         
-        ec "# Submit qsub files ... ";  source qall >> $pipelog
+        ec "# Submit qsub files ... ";  source qall
         ec " >>>>   wait for $nts addSky jobs ... first check in 1 min  <<<<<"
         
         btime=$(date "+%s.%N"); sleep 60     # before starting wait loop
@@ -1621,9 +1653,10 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         
         # clean up:
         if [ ! -d withSky ]; then mkdir withSky; fi 
-        mv v20*withSky.fits withSky
-        ln -s withSky/v20*_withSky.fits . ; rename _withSky.fits .fits v20*_withSky.fits
-        rm sky_20*.fits bpm*[0-9].fits  # links to ../calib/sky and bpm files
+        mv v20*withSky.fits withSky  ;  chmod 444 withSky/v20*_sky.fits
+		mv addSky_??.* withSky
+##        ln -s withSky/v20*_withSky.fits . ; rename _withSky.fits .fits v20*_withSky.fits
+        rm sky_20*.fits bpm*[0-9].fits    # links to ../calib/sky and bpm files
 
         ec "#-----------------------------------------------------------------------------"
         if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
@@ -1631,7 +1664,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
 
 
     #----------------------------------------------------------------------------------------------#
-    #       Compute good sky 
+    #       Compute good sky (mkSky)
     #----------------------------------------------------------------------------------------------#
     # Don't need links to withSky images here (in images/) as work is done in subdirs and direct
     # links are created there.  
@@ -1640,10 +1673,10 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
     #----------------------------------------------------------------------------------------------#
 
     nn=$(ls -1 mkSky_??.log 2> /dev/null | wc -l)
-    ns=$(ls mkSky/v20*_sky.fits 2> /dev/null | wc -l)
+    ns=$(ls v20*_sky.fits 2> /dev/null | wc -l) #; echo $nn $ns
     if [ $nn -ge 1 ] && [ $ns -ge 5 ]; then
         ec "CHECK: Found $nn mkSky_xx.log files and $ns _sky.fits files for $nimages images. "
-        ec "CHECK: ====> sky subtraction already done - skip to next step"
+        ec "CHECK: ====> proper skies already built - skip to next step"
         ec "#-----------------------------------------------------------------------------"
     else     
         rcurr=R13
@@ -1717,14 +1750,14 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
                 $bindir/mkSky.sh > $qfile
             
             ec "# Built $qfile with $(cat $l | wc -l) entries"
-            echo "qsub ${qfile} ; sleep 4" >> qall
+            echo "qsub ${qfile} ; sleep 1" >> qall
         done  
         ec "#-----------------------------------------------------------------------------"
         ec "# ==> written to file 'qall' with $nts entries "
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
         
-        ec "# Submit qsub files ... ";  source qall >> $pipelog
+        ec "# Submit qsub files ... ";  source qall
         ec " >>>>   wait for $nts mkSky jobs ... first check in 1 min  <<<<<"
         
         btime=$(date "+%s.%N"); sleep 60     # before starting wait loop
@@ -1748,27 +1781,30 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         # ---------------------- check products ----------------------
 
         rm -f estats         # before filling it
-        for l in mkSky_??.out; do tail -1 $l >> estats; done
+        grep STATUS:\  mkSky_??.out | grep -v \ 0 > estats
         nbad=$(grep -v STATUS:\ 0  estats | wc -l)
         if [ $nbad -gt 0 ]; then
             ec "PROBLEM: some mkSky's exit status not 0 ... "
-            grep -v \ 0  estats;    askuser
+            cat estats;    askuser
         else
             ec "CHECK: mkSky.sh exit status ok ... continue"; rm -f estats qall
         fi
-        
+
         ### handle frames which have insuffient nearby frames to determine sky ###
-        grep CHECK: mkSky_??.log | grep skip | cut -d\: -f3 | tr -d ' '  > list_noSky
+		grep CHECK: mkSky_??.log > mkSky.log
+        grep skip mkSky.log | cut -d\: -f3 | tr -d ' '  > list_noSky
         nn=$(cat list_noSky | wc -l)
         if [ $nn -ge 1 ]; then
             ec "# Found $nn images with insufficient neighbours to build sky, see list_noSky"
-            for f in $(cat list_noSky); do mv ${f%.fits}*.* Rejected; done
+            for f in $(cat list_noSky); do rm ${f%.fits}*.* ; done   # these are links
             echo "# $nn files with too few neighbours to build sky" >> $badfiles
             cat list_noSky >> $badfiles
-            ec "# ... removed them (to Rejected dir) and added names to $badfiles"
+            ec "# ... removed them (links) and added names to $badfiles"
             ls -1 v20*_0????.fits > list_images
             nimages=$(cat list_images | wc -l)
             ec "# ==> $nimages valid images left."
+		else
+			ec "# Found NO images with insufficient neighbours to build sky ... WOW!"
         fi
 
         ### check number of valid files produced:
@@ -1780,6 +1816,12 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
             askuser
         fi
 
+		### cleanup and make links
+        if [ ! -d mkSky ]; then mkdir mkSky; fi
+		mv mkSky_??.* mkSky
+		# - leave logfiles - used to check if mkSky already done
+		# - leave the _sky files for updateWeights; move afterwards to mkSky
+
         if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
     
@@ -1787,7 +1829,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
     #----------------------------------------------------------------------------------------------#
     #       Update weights: set _weight to 0 where no sky was determined
     #----------------------------------------------------------------------------------------------#
-    # Inputs: weight.fits file and .sky.fits files; 
+    # Inputs: weight.fits file and _sky.fits files; 
     # Output: new weight.fits, with unseen pixels (0 in _sky.fits) are also set to zero
     # 
     #----------------------------------------------------------------------------------------------#
@@ -1806,7 +1848,12 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
             ec "ATTN: found $nout updateWeights_??.out and $nlog update_weights_??.log files ... delete them and continue??"
             askuser
         fi
+		
+		# remove old files if any
         rm -f qall estats updateWeights_??.out  updateWeights_??.sh
+		# build links to weight and mask files
+		ln -sf Masks/v20*_mask.fits .
+		ln -sf weights/v20*_weight.fits .
 
         if [ $nimages -lt 50 ]; then nts=4; else nts=12; fi
         split -n l/$nts list_images --additional-suffix='.lst' updateWeights_
@@ -1826,7 +1873,7 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
         
-        ec "# Submit qsub files ... ";  source qall >> $pipelog
+        ec "# Submit qsub files ... ";  source qall
         ec " >>>>   wait for $nts updateWeights jobs ... first check in 1 min  <<<<<"
         
         btime=$(date "+%s.%N"); sleep 60     # before starting wait loop
@@ -1850,16 +1897,25 @@ elif [ $1 = 'p3' ]; then      # P3: add CASU sky then determine and remove best 
         else
             ec "CHECK: updateWeights.sh exit status ok ... continue"; rm -f qall
         fi
-        
+		
+		# join the logfiles - contains number of new pixels masked for each frame
+        cat updateWeights_??.log > updateWeights.log
+
+		# cleanup
+		if [ ! -d UpdateWeights ]; then mkdir UpdateWeights; fi
+        mv updateWeights_??.* UpdateWeights
+
         # mv _sky images to mkSky dir
-        if [ ! -d mkSky ]; then mkdir mkSky; fi
         mv v20*_sky.fits mkSky
+	   
+		# rm all links to images, weights, etc
+		rm v20*_0????.fits v20*_weight.fits v20*_mask.fits zeroes.fits srclist # v20*.head
 #        ec "#-----------------------------------------------------------------------------"
         if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
 
-
-    if [ $auto == 'T' ]; then                                 # END P3
+	cd $WRK  
+    if [ $pauto == 'T' ]; then                                 # END P3
         ec "#-----------------------------------------------------------------------------"      
         ec "# $pcurr finished; ==> auto continue to $pnext"
         ec "#-----------------------------------------------------------------------------"      
@@ -1878,8 +1934,10 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
     ncurr=4 ; pcurr="p$ncurr" ; pprev=$(($ncurr-1)) ; pnext="p$(($ncurr+1))"
     mycd $WRK/images
     
-    nimages=$(ls -1 v20??????_0????.fits | wc -l)
-    ec "# CHECK: found $nimages images"
+    nims=$(ls -1 origs/v20*_0????.fits | wc -l)
+    nimages=$(cat list_images | wc -l)
+
+    ec "CHECK: found $nimages images"
     
     # ----------------------  Finished checking  ----------------------
 
@@ -1892,9 +1950,9 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
     #----------------------------------------------------------------------------------------#
 
     nn=$(ls cleaned/v20*_clean.fits 2> /dev/null | wc -l)
-    nl=$(ls subSky_??.log 2> /dev/null | wc -l)
-    if [ $nl -ge 1 ]  && [ $nn -eq $nimages ]; then 
-        ec "CHECK: Found $nn clean images in and $nl subSky_??.log files "
+#    nl=$(ls subSky_??.log 2> /dev/null | wc -l)
+    if [ -e subSky.log ] && [ $nn -eq $nimages ]; then 
+        ec "CHECK: Found $nn clean images in and subSky.log files "
         ec "CHECK: ====> skip to next step "
         ec "#-----------------------------------------------------------------------------"
     else     
@@ -1943,13 +2001,13 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
             else
                 ec "ATTN: list $l empty ..."
             fi
-            echo "qsub $qfile" >> qall
+            echo "qsub $qfile; sleep 1" >> qall
         done   
         ec "# ==> written to file 'qall' with $nts entries "
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
         
-        ec "# Submit qsub files ... ";  source qall >> $pipelog
+        ec "# Submit qsub files ... ";  source qall
         ec " >>>>   wait for $nts subSky jobs ... first check in 1 min  <<<<<"
         
         btime=$(date "+%s.%N"); sleep 60     # before starting wait loop
@@ -1990,8 +2048,10 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
             askuser
         fi
         
-        mkdir cleaned; mv v20*_clean.fits cleaned;
+        mkdir cleaned; mv v20*_clean.fits cleaned
         ln -s cleaned/v*clean.fits .; rename _clean.fits .fits v*_clean.fits
+		mv subSky_??.* cleaned            # and other subSky files
+		# leave subSky.log to check if done
         ec "CHECK: subSky.sh done, clean images moved to cleaned/ and linked ... continue"
         ec "#-----------------------------------------------------------------------------"
         if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
@@ -2006,33 +2066,55 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
     # 
     #----------------------------------------------------------------------------------------#
 
+	pass=2
     # update paw lists?
-    npaws=$(ls list_paw? 2> /dev/null | wc -l)  # ; echo " Found $npaws paw lists"
-    if [ $npaws -gt 0 ]; then
+    npaws=$(ls list_paw? 2> /dev/null | wc -l)  
+
+    if [ $npaws -ge 3 ]; then
         nn=$(wc list_paw? 2> /dev/null | grep total | tr -s ' ' | cut -d' ' -f2 )
+		#ec "# Found $npaws paws with a total of $nn images"
     else
-        nn=0
-    fi
-    if [ $nn -ne $nimages ]; then
-        ec "# No paw lists found or lists out of date ... (re)build them "
-        $0 plists  
+        ec "# No paw lists found or lists out of date ... (re)build them from list_images"
+		file=$(mktemp)
+		paws=" paw1 paw2 paw3 paw4 paw5 paw6 COSMOS"
+		for i in $(cat list_images); do grep $i ../FileInfo.dat >> $file; done
+		for p in $paws; do grep $p $file | cut -d \   -f1 > list_${p}; done
+		rm $file
+
+        # if present, convert to paw0
+		if [ -e list_COSMOS ]; then mv list_COSMOS list_paw0; fi
+
+		# remove empty lists
+		for f in list_paw?; do if [ ! -s $f ]; then rm $f; fi; done
+
         npaws=$(ls list_paw? 2> /dev/null | wc -l)
+		ec "# Built $npaws paw lists as follows:"
+		wc -l list_paw? 
     fi
 
     # check if swarp alreay done:
     nsubima=$(ls -1 substack_paw?_??.fits 2> /dev/null | wc -l)   
 
-    stout=UVISTA_${REL}_p2lr   # output intermediate stack w/o .fits extension - for low res
-    # if already there, then do the high res (cosmos) version 
+    stout=UVISTA_${REL}_p2_lr   # output name of low-res pass 2 stack w/o .fits extension
+    # NB. if if low-res stack already there, then do the high res (cosmos) version 
     if [ -e ${stout}.fits ]; then stout=${stout%lr}hr ; fi  
 
+	# define the name of the directory for substacks and other files, and created it
+	if [[ $stout =~ 'lr' ]]; then 
+		prod_dir=swarp_p2_lr
+	else
+		prod_dir=swarp_p2_hr
+	fi
+	if [ ! -d $prod_dir ]; then mkdir $prod_dir; fi
+
+          
     if [ $nsubima -ge $npaws ]; then 
         ec "CHECK: Found $nsubima substacks - swarp done ..."
         ec "CHECK: ==> skip to next step "
         ec "#-----------------------------------------------------------------------------"
     else 
         rcurr=R16
-        ec "## - R16:  pswarp.sh: swarp pass2 for $npaws paws ... by sub-paws "
+        ec "## - R16:  pswarp.sh: swarp pass2 for $npaws paws, $nn images ... by sub-paws "
         ec "#-----------------------------------------------------------------------------"
         nout=$(ls -1 pswarp2_??.out 2> /dev/null | wc -l)
         nlog=$(ls -1 pswarp2_??.log 2> /dev/null | wc -l)
@@ -2043,28 +2125,26 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
         rm -f qall estats pswarp2_paw_??.lst  pswarp2_paw_??.sh     # just in case
         
         # if no p2 stack, then do one at low res, 
-        if [[ $stout  =~ "lr" ]]; then
-            ec "# low-res p2 stack not found ... build it"
-            headfile=firstpass.head
+        if [[ $stout =~ "lr" ]]; then
+            ec "# First build low-res (0.6 arcsec/pix) p2 stack ..."
+			#headfile=firstpass.head
+            headfile=cosmos_lr.head   #std1G.head
         else
-            ec "# found low-res p2 stack ... now build stack at cosmos res."
-            headfile=cosmos.head
+            ec "# Found low-res p2 stack ... build stack high-res (0.3 arcsec/pix) one"
+            #headfile=cosmos.head
+			headfile=cosmos_hr.head   #std4G.trim.head
         fi
 
         subsky=N                             # for pass2 DO NOT subtract sky
-        ecn "# image files links:  " 
-        ls -l $imroot.fits | tr -s ' ' | cut -d' ' -f9-13
-        ecn "# head files links:   " 
-        ls -l $imroot.head | tr -s ' ' | cut -d' ' -f9-13
-        ecn "# weight files links: " 
-        ls -l ${imroot}_weight.fits | tr -s ' ' | cut -d' ' -f9-13
-        ec "#-------------------------------------------------------#"
-        ec "#### ATTN: head-file: $headfile"
-        ec "#### ATTN: subsky:    $subsky"
-        ec "#### ATTN: output:    $stout"
-        ec "#-------------------------------------------------------#"
 
-        nim=280  # approx num of images in each sublist
+        ec "#-----------------------------------------------------------------------------"
+        ec "# output:    $stout"
+        ec "# head-file: $headfile"
+        ec "# subsky:    $subsky"
+        ec "#-----------------------------------------------------------------------------"
+
+        nim=450  # approx num of images in each sublist
+		rm -f pswarp2_paw?_??.*     # remove old stuff
         for list in list_paw[0-9]; do  
             nl=$(cat $list | wc -l)
             ppaw=$(echo $list | cut -d\_ -f2)       # NEW tmporary name for full paw
@@ -2078,37 +2158,34 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
                 # ---------------------- Local run by sublist ----------------------
                 
                 qfile="pswarp2_$paw.sh"; touch $qfile; chmod 755 $qfile
-                sed -e 's|@NODE@|'$node'|'  -e 's|@IDENT@|'$PWD/pswarp2'|'  -e 's|@DRY@|0|'  \
+                sed -e 's|@NODE@|'$node'|'  -e 's|@IDENT@|'$PWD/pswarp2'|'  -e 's|@DRY@|'$dry'|'  \
                     -e 's|@FILTER@|'$FILTER'|' -e 's|@LIST@|'$slist'|'  -e 's|@WRK@|'$WRK'|' \
-                    -e 's|@PAW@|'$paw'|'  -e 's|@HEADFILE@|'$headfile'|'                     \
+                    -e 's|@PAW@|'$paw'|'  -e 's|@PASS@|'$pass'|'  -e 's|@HEADFILE@|'$headfile'|'                     \
                     -e 's/@SUBSKY@/'$subsky'/'  $bindir/pswarp.sh > $qfile
             
                 ec "# Built $qfile with $nl images for paw $paw ==> $outname"
-                echo "qsub $qfile" >> qall
+                echo "qsub $qfile; sleep 1" >> qall
             done
         done 
-        nq=$(cat qall | wc -l)
-        ec "# ==> written to file 'qall' with $nq entries "
+        njobs=$(cat qall | wc -l)
+        ec "# ==> written to file 'qall' with $njobs entries "
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
 
-        ec "# Submit qsub files ... ";  source qall >> $pipelog
-        ec " >>>>   Wait $nq pswarp jobs ... first check in 1 min  <<<<<"
+        ec "# Submit qsub files ... ";  source qall
+        ec " >>>>   Wait $njobs pswarp jobs ... first check in 1 min  <<<<<"
 
-        if [ $nimages -lt 500 ]; then nsec=30; else nsec=600; fi    # useful in testing
-        ostr="ddd"                     # a dummy string for comparisons within the loop
+        ostr="ddd"              # a dummy string for comparisons within the loop
         btime=$(date "+%s.%N");  sleep 60           # begin time
         while :; do           #  begin qsub wait loop for pswarp
-            njobs=$(qstat -au moneti | grep swarp_${FILTER} | wc -l)
-            #echo "DEBUG $njobs running or queued ... waiting ... "    # DEBUG
-            [ $njobs -eq 0 ] && break          # jobs finished
+            ndone=$(ls $WRK/images/pswarp2_paw?_??.out 2> /dev/null | wc -l)
+            [ $njobs -eq $ndone ] && break          # jobs finished
 
-            # check every $nsec sec, and if a new substack is done then print this message
+            # check every 30 sec, and if a new substack is done then print this message
             str=$(ls -lthr substack_paw?_??.fits 2> /dev/null | tr -s ' ' | cut -d' ' -f4-9 | tail -1)
-        #   str=$(ls -lthr paw?_??_*/substack_paw?_??.fits 2> /dev/null | tr -s ' ' | cut -d' ' -f4-9 | tail -1)
             if [[ $str != $ostr ]]; then ec " $njobs running or queued; last substack:  $str " ; fi
             ostr=$str
-            sleep $nsec
+            sleep 30
         done  
         ec "# pswarp finished; walltime $(wtime)"
         
@@ -2119,13 +2196,14 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
             ec "PROBLEM: pswarp2_paw?_??.sh exit status not 0: "
             grep -v STATUS:\ 0 estats 
             askuser
+		else
+			ec "CHECK: pswarp2_xxx.sh exit status ok"; rm estats
         fi
-        ec "CHECK: pswarp2_xxx.sh exit status ok"; rm estats
 
         # check num substacks found
         nn=$(ls substack_paw?_??.fits | wc -l)
-        if [ $nn -lt $nq ]; then
-            ec "PROBLEM:  found only $nn substacks for $nq expected ..."
+        if [ $nn -lt $njobs ]; then
+            ec "PROBLEM:  found only $nn substacks for $njobs expected ..."
             askuser 
         fi
 
@@ -2140,7 +2218,7 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
 
         # check for WARNINGS in logfiles
         warn=0
-        for f in pswarp_paw?_??.log; do   # log files not yet renamed
+        for f in pswarp2_paw?_??.log; do   # log files not yet renamed
             grep WARNING $f | wc -l > ${f%.log}.warn
             if [ $(wc ${f%.log}.warn | wc -l) -gt 1 ]; then warn=1; fi
         done
@@ -2149,11 +2227,9 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
             askuser
         fi
 
-        if [ ! -d swapr_p2 ]; then mkdir swarp_p2; fi
-        mv pswarp2*.sh pswarp*.warn  pswarp2_paw?_??.lst swarp_p2
-        rename swarp_paw swarp2_paw pswarp_paw*.log  # name built in script
-
-        rm -rf paw?_?? qall 
+        mv -f pswarp2*.sh pswarp2*.warn pswarp2_paw?_??.???  $prod_dir
+		mv -f substack*clip.log substack*.xml                $prod_dir
+        rm -f qall substack*.head  # name built in script
 
         ec "#-----------------------------------------------------------------------------"
         if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
@@ -2169,21 +2245,29 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
         ec "#       ==> continue with building its mask and flag"
     else 
         rcurr=R17
+		# rm pmerge.* from previous runs
         rm -f pmerge.??? pmerge.sh
-#        ls -1 substack_paw?.fits substack_paw?_??.fits > pmerge.lst
-        ls -1 substack_paw?_??.fits > pmerge.lst
-        nsubstacks=$(cat pmerge.lst | wc -l)
+
+        nsubstacks=$(ls -1 substack_paw?_??.fits 2> /dev/null | wc -l)
         if [ $nsubstacks -eq 0 ]; then
-            "ERROR: no substacks found - quitting"; exit 2
-        fi
+            ec "ERROR: no substacks found - quitting"; exit 2
+		fi
+		
+        if [ $nsubstacks -ne $npaws ]; then
+            ec "#### ATTN: Number of substacks not same as number of paws"
+			askuser
+		fi
 
         ec "## - R17:  pmerge.sh: Merge $nsubstacks substacks into $stout ..."
         ec "#-----------------------------------------------------------------------------"
-        
+		ec "# Number of substacks same as $npaws paws"
+
+        ls -1 substack_paw?_??.fits > pmerge.lst
+
         qfile="pmerge.sh"; touch $qfile; chmod 755 $qfile
         sed -e 's|@NODE@|'$node'|'   -e 's|@IDENT@|'$PWD/pmerge'|'  -e 's|@DRY@|'$dry'|'  \
             -e 's|@FILTER@|'$FILTER'|' -e 's|@LIST@|'pmerge.lst'|'  -e 's|@WRK@|'$WRK'|'  \
-            -e 's|@STOUT@|'$stout'|'    $bindir/pmerge.sh > ./$qfile
+            -e 's|@STOUT@|'$stout'|'   -e 's|@PASS@|'$pass'|'  $bindir/pmerge.sh > ./$qfile
         
         ec "# Built $qfile with $nsubstacks entries"
         ec "#-----------------------------------------------------------------------------"
@@ -2194,8 +2278,8 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
         
         btime=$(date "+%s.%N");  sleep 60   # before starting wait loop
         while :; do           #  begin qsub wait loop for pmerge
-            njobs=$(qstat -au moneti | grep pmerge_${FILTER} | wc -l)
-            [ $njobs -eq 0 ] && break          # jobs finished
+            ndone=$(ls $WRK/images/pmerge.out 2> /dev/null | wc -l)
+            [ $ndone -eq 1 ] && break          # jobs finished
             sleep 30
         done  
         ec "# pmerge finished - now check exit status"
@@ -2205,17 +2289,23 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
             ec "PROBLEM: pmerge.sh exit status not 0 ... check pmerge.out"
             askuser
         fi
-          
+
         ec "CHECK: pmerge.sh exit status ok ... continue"
         ec "# $stout and associated products built:"
         ls -lrth UVISTA*p2*.*
         ec "# ..... GOOD JOB! "
-        mv substack_paw?_??.fits substack_paw?_??_weight.fits swarp_p2
+        mv substack_paw?_??.fits substack_paw?_??_weight.fits $prod_dir
     fi
-    
+
+	if [[ $prod_dir =~ 'lr' ]]; then
+		mycd $WRK
+		ec "# Low-res stack done, now begin high-res one"
+		$0 p4 auto
+	fi
 
     ec "##------------------------  END OF DR4 PIPELINE ------------------------------"
     ec "#-----------------------------------------------------------------------------"
+
 
 
 #-----------------------------------------------------------------------------------------------

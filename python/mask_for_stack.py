@@ -1,15 +1,30 @@
-#!/usr/bin/env python
+#!/opt/intel/intelpython2-2019.4-088/intelpython2/bin/python
 # -----------------------------------------------------------------
 # Build mask for the stack
 # ex. python $pydir/mask_for_stack.py -I UVIS_p1.fits -W UVIS_p1_weight.fits --threshold 0.7 --extendedobj
+# The output object flag (_obFlag) is 0 on an ojbect, 1 elsewhere (sky)
 # -----------------------------------------------------------------
 
 import sys, re, os
 import numpy as np
 from time import ctime
-from subsky_sub import *
+#from subsky_sub import *
 from ASCII_cat import *
+import astropy.io.fits as pyfits
 from optparse import OptionParser
+
+#-----------------------------------------------------------------------------
+# Sextractor wrapper
+#-----------------------------------------------------------------------------
+def sextract(image, sexconf, cparam):
+    cstr = ""
+    for k in cparam:
+	cstr += " -" + str(k) + " " + str(cparam[k]) + " "
+
+    print "  sex %s -c %s %s" % (image, sexconf, cstr)
+    os.system("sex %s -c %s %s" % (image, sexconf, cstr));
+
+#-----------------------------------------------------------------------------
 
 parser = OptionParser()
 
@@ -18,16 +33,16 @@ parser.add_option('-I', '--image',  dest='image',  help='Reference stack', type=
 parser.add_option('-W', '--weight', dest='weight', help='Reference weight stack', type=str, default="")
 
 # configuration PATHS
-parser.add_option('--conf-path', dest='cpath', help='path for configuration files', type=str, default="")
+parser.add_option('--conf-path',   dest='cpath', help='path for configuration files', type=str, default="")
 parser.add_option('--script-path', dest='spath', help='path for script files', type=str, default="")
 
 # Masking depth
-parser.add_option('--threshold', dest='thresh', help='detection threshold in building masks', type=float, default="1.")
+parser.add_option('--threshold',   dest='thresh', help='detection threshold in building masks', type=float, default="1.")
 parser.add_option('--extendedobj', dest='extendedobj', help='Extended Objetcs ?', action='store_true', default=False)
 
 # thresholds
 parser.add_option('-m', '--min', dest='min', help='minimum ok',  type='float', default="-50.")
-parser.add_option('-n', '--max', dest='max', help='maximum ok',  type='float', default="500000.")
+parser.add_option('-n', '--max', dest='max', help='maximum ok',  type='float', default="50.")
 
 try:
     opts,args = parser.parse_args(sys.argv[1:])
@@ -55,34 +70,36 @@ cparam_sex = {'CATALOG_TYPE': 'NONE', 'DEBLEND_MINCONT': 1, 'CLEAN': 'N',
 if opts.extendedobj:
     cparam_sex['BACK_SIZE'] = 512
     cparam_sex['BACK_FILTERSIZE'] = 5
+
 sextract(opts.image, sexconf, cparam_sex)
 
 #-----------------------------------------------------------------------------
 
 print "## then build a flag file (python):"
-print " - copy the check image to the flag file, and set non-zero values to 1"
+print " - in the -OBJECT check image, set non-zero values(sky) to 1"
+# this check images is 0 where sextractor found a source and unchanged elsewhere, ie. on sky
 
 out = pyfits.open(flag, mode='update')
 data = out[0].data
-data[data.nonzero()] = 1                          # set non-zero values to 1
+data[data.nonzero()] = 1                          # set non-zero values to 1 (sky)
 
-print " - flag (to 0) pixels > %i and pixels < %i"%(opts.max, opts.min)
+print " - Set to 0 other pixels with abnormal values:"  #%(opts.thresh)
 
 ima = pyfits.open(opts.image)                     # open stack image
 data[ima[0].data < opts.min] = 0                  # flag low values in
 data[ima[0].data > opts.max] = 0                  # flag high values
 data = data.astype('UInt8')                       # convert to integer ... no effect, no error
 
-# valid fraction:
+# final fraction of valid (sky) pixels:
 d2 = data.reshape(data.size)
 dz = d2.nonzero()
-vf = 1.*len(dz[0])/len(d2)
-print " - fraction of valid pixels: %0.2f"%vf
+vf = 100.*len(dz[0])/len(d2)  # valid fraction
+print " - Percent valid pixels: %0.2f"%(vf)
 
 print "## Write history kwds of output flagfile"
 out[0].header['history'] = "Original file: %s"%(stack)
 out[0].header['history'] = "Threshold used to build mask: %0.2f"%(opts.thresh)
-out[0].header['history'] = "Percent of valid pixels: %0.2f"%(100.*vf)
+out[0].header['history'] = "Percent valid pixels: %0.2f"%(vf)
 
 out.close(output_verify='silentfix+ignore')
 ima.close()

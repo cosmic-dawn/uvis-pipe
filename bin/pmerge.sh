@@ -1,7 +1,7 @@
 #!/bin/sh
 #PBS -S /bin/sh
 #PBS -N merge_@FILTER@
-#PBS -o @IDENT@.out            
+#PBS -o @IDENT@.out
 #PBS -j oe 
 #PBS -l nodes=1:ppn=6,walltime=08:00:00
 #-----------------------------------------------------------------------------
@@ -28,7 +28,7 @@ ec() { if [ $dry == 'T' ]; then echo "[TEST MODE] $1";
 sdate=$(date "+%s")
 
 module=pmerge                   # w/o .sh extension
-uvis=/home/moneti/uvis            # top UltraVista code dir
+uvis=/home/moneti/softs/uvis-pipe            # top UltraVista code dir
 bindir=$uvis/bin
 pydir=$uvis/python                # python scripts
 confdir=$uvis/config              # config dir
@@ -70,7 +70,7 @@ wtout=${stout%.fits}_weight.fits
 logfile=$WRK/pmerge.log
 
 # Command to produce the stack and its weight ...
-args=" -c $confdir/config/swarp238.conf  -COMBINE_BUFSIZE 8192 -RESAMPLE N  -WEIGHT_SUFFIX _weight.fits \
+args=" -c $confdir/swarp238.conf  -COMBINE_BUFSIZE 8192 -RESAMPLE N  -WEIGHT_SUFFIX _weight.fits \
        -WEIGHT_TYPE MAP_WEIGHT  -COMBINE_TYPE WEIGHTED  -IMAGEOUT_NAME $stout  -WEIGHTOUT_NAME $wtout \
        -WRITE_XML N   -SUBTRACT_BACK N  "
 ec "# stack: $stout"
@@ -79,7 +79,7 @@ ec "# args:  $args"
 comm="swarp @$list $args $verb"
 
 
-ec "#------------------------------------------------------------------" | tee -a $logfile 
+ec "#------------------------------------------------------------------" | tee $logfile 
 ec " >>>>  Merge $(cat $list | wc -l) substacks from $list  <<<<"        | tee -a $logfile 
 ec "#------------------------------------------------------------------" | tee -a $logfile 
 

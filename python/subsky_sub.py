@@ -239,8 +239,9 @@ def create_mask_pass1(file2, bertin_par, options):
     sexpar = bertin_par.get_sex1param(options)
     sexpar['CHECKIMAGE_NAME'] = root + "_ob.fits"
     sexpar['WEIGHT_IMAGE'] = root + options.inweight_suf
-    sexpar['VERBOSE_TYPE'] = "QUIET"
+    sexpar['VERBOSE_TYPE'] = "QUIET"  #QUIET
     sexpar['BACK_SIZE'] = 64
+    print root+'.fits',sexpar
     sextract2(root+'.fits',sexpar)
 
     # Then ww to convert it to a mask
@@ -369,6 +370,7 @@ def project_combine(maskin, maskout, im, next, options):
     root = im.split('.fits')[0]
 
     for j in range(1, next + 1, 1):
+#        print " --", root, j, "of ", next
         # copy header
         infits = root + '.temp.fits'
         outhead = root + '.flag.' + str(j) + '.head'
@@ -384,6 +386,7 @@ def project_combine(maskin, maskout, im, next, options):
         cstr = ""
         for k in swarppar:
             cstr += " -" + str(k) + " " + str(swarppar[k]) + " "
+        print "swarp %s %s " % (maskin, cstr)
         os.system("swarp %s %s " % (maskin, cstr))
 
         os.remove(outhead)

@@ -3,7 +3,7 @@
 #PBS -N sw_@FILTER@_@PAW@
 #PBS -o @IDENT@_@PAW@.out            
 #PBS -j oe
-#PBS -l nodes=1:bigscratch:ppn=15,walltime=44:00:00
+#PBS -l nodes=1:ppn=22,walltime=44:00:00
 #-----------------------------------------------------------------------------
 # pswarp:  pswarp script
 # requires: astropy.io.fits, uvis scripts and libs
@@ -28,7 +28,7 @@ ecn() { echo -n "$(date "+[%d.%h.%y %T"]) $1 "; }    # echo with date
 mycd() { \cd $1; ec " --> $PWD"; }               # cd with message
 sdate=$(date "+%s")
 
-uvis=/home/moneti/uvis            # top UltraVista code dir
+uvis=/home/moneti/softs/uvis-pipe            # top UltraVista code dir
 bindir=$uvis/bin
 #pydir=$uvis/python                # python scripts
 confdir=$uvis/config              # config dir
@@ -44,9 +44,10 @@ if [[ "$0" =~ "$module" ]]; then
     echo "## This is $module: running as shell script "
 	WRK=$WRK
 	FILTER=$FILTER
-	if [[ "${@: -1}" == 'dry' ]]; then dry=1; else dry=0; fi
+	if [[ "${@: -1}" == 'dry' ]]; then dry=T; else dry=F; fi
 	subsky="N"
 	list=$1     # presumably like list_paw3
+	pass=2
 	verb=" -VERBOSE_TYPE LOG"
 else
     echo "## This is $module: running via qsub (from pipeline)"
@@ -55,6 +56,7 @@ else
 	list=@LIST@
 	subsky=@SUBSKY@
 	FILTER=@FILTER@
+	pass=@PASS@
 	verb=" -VERBOSE_TYPE LOG"
 fi 
 
@@ -77,8 +79,10 @@ fi
 
 if [[ "$rhost" =~ $(hostname) ]]; then
 	workdir=$WRK/images/${pawname}_$FILTER
+    remoteRun=0
 else
 	workdir=/scratch/${pawname}_$FILTER      # work dir
+    remoteRun=1
 fi
 
 if [ ! -d $datadir ];  then echo "ERROR: $WRK/images not found ... quitting"; exit 5; fi
@@ -89,8 +93,8 @@ echo "=================================================================="
 echo " >>>>  Begin pswarp $list on $nl files <<<<"
 echo "------------------------------------------------------------------"
 
-mycd $datadir
-echo "## Working on $(hostname); data on $rhost; work dir is $workdir"
+#mycd $datadir
+echo "## Working on $(hostname); temprary work dir is $workdir; data on $WRK"
 
 # run these in a separate subdir to avoid problems with parallel runs
 if [ -d $workdir ]; then 
@@ -102,19 +106,23 @@ else
 fi
 
 mycd $workdir 
-ec "## For $pawname working in $(hostname):$PWD"  
-ec "## ... build links to data files"
+ec "## For $pawname working in $(hostname):$workdir"  
+ec "## outname $outname,  pass $pass"
+ec "## ==> build links to data files"
 
 ln -sf $datadir/$list .
 ln -sf $confdir/@HEADFILE@ $outname.head 
 for f in $(cat $list); do r=${f%.fits}
-	ln -sf $datadir/origs/${r}.fits $f
+	if [ $pass -eq 1 ]; then 
+		ln -sf $datadir/origs/${r}.fits $f
+	else
+		ln -sf $datadir/cleaned/${r}_clean.fits $f
+	fi
 	ln -sf $datadir/weights/${r}_weight.fits .
 	ln -sf $datadir/heads/${r}.head .
 done
 
-# logfiles - will be renamed in pipeline to separate pass1/2
-logfile=pswarp1_$pawname.log
+# Build command line
 
 # command line for DR5
 args=" -c $confdir/swarp238.conf -WEIGHT_SUFFIX _weight.fits  -WEIGHT_TYPE MAP_WEIGHT \
@@ -122,6 +130,9 @@ args=" -c $confdir/swarp238.conf -WEIGHT_SUFFIX _weight.fits  -WEIGHT_TYPE MAP_W
    -COMBINE_TYPE CLIPPED  -CLIP_SIGMA 2.8  -CLIP_WRITELOG Y  -CLIP_LOGNAME ${outname}_clip.log \
    -RESAMPLE Y  -RESAMPLING_TYPE LANCZOS2  -FSCALASTRO_TYPE VARIABLE  -COMBINE_BUFSIZE 8192 \
    -SUBTRACT_BACK $subsky  -DELETE_TMPFILES Y  -NTHREADS 36 -WRITE_XML Y  -XML_NAME ${outname}.xml   "
+
+#### logfiles - will be renamed in pipeline to separate pass1/2  MAYBE
+logfile=$WRK/images/pswarp${pass}_$pawname.log
 
 # ATTN: lots of jobs aborted with  -COMBINE_BUFSIZE 16384!!  ok with 8192
 
@@ -134,13 +145,12 @@ comm="swarp @$list $args   $verb "
 echo "% $comm " >> $logfile
 
 imroot=$(head -1 $list)
-ec "## Input images are like:"
+ec "## Input files are like:"
 ecn "   "; ls -lh $imroot | tr -s ' ' | cut -d' ' -f9-11
-ecn "   "; ls -lh ${imroot%.fits}_weight.fits | tr -s ' ' | cut -d' ' -f9-11
-ec "## Head files are like:"
 ecn "   "; ls -lh ${imroot%.fits}.head | tr -s ' ' | cut -d' ' -f9-11
+ecn "   "; ls -lh ${imroot%.fits}_weight.fits | tr -s ' ' | cut -d' ' -f9-11
 
-if [ $dry -ne 1 ]; then
+if [ $dry == 'F' ]; then
 	$comm >> $logfile 2>&1
 	mv ${outname}*.* $logfile $datadir
     #-----------------------------------------------------------------------------
@@ -156,8 +166,10 @@ fi
 echo "------------------------------------------------------------------"
 echo ""
 
-cd $datadir
+#cd $datadir
+# Clean up ...
 rm -rf $workdir
+
 
 exit 0
        

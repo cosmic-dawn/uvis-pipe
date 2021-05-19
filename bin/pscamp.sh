@@ -3,7 +3,7 @@
 #PBS -N pscamp@PTAG@_@FILTER@
 #PBS -o @IDENT@.out
 #PBS -j oe
-#PBS -l nodes=1:ppn=23,walltime=@WTIME@:00:00
+#PBS -l nodes=1:ppn=31,walltime=@WTIME@:00:00
 #-----------------------------------------------------------------------------
 # pscamp: run scamp on a list of ldacs
 # requires: astromatic suite, ... intelpython, astropy.io.fits, uvis scripts and libs
@@ -11,6 +11,14 @@
 set -u 
 export PATH="/softs/astromatic/bin:$PATH"  #echo $PATH
 export PYTHONPATH="/home/moneti/uvis/python:/home/moneti/uvis/python_lib" 
+
+#-----------------------------------------------------------------------------
+# this is for Henry's scamp with 
+#-----------------------------------------------------------------------------
+module() { eval $(/usr/bin/modulecmd bash $*); }
+module purge ; module load inteloneapi/2021.1 intelpython/3-2019.4 cfitsio
+export LD_LIBRARY_PATH=/lib64:${LD_LIBRARY_PATH}
+
 #-----------------------------------------------------------------------------
 # other functions
 #-----------------------------------------------------------------------------
@@ -67,15 +75,16 @@ case  $FILTER in   # P,Q,R,T filters were test spaces in dr4
 esac   
 #-----------------------------------------------------------------------------------------------
 
-version="2.6.3"     # this version used in DR4
-#version="2.7.8"    #version="2.9.2"
-#version="2.10.0"   # avec Gaia-EDR3, mais tjrs sans support des PMs
-myscamp="/softs/astromatic/scamp/${version}-gnu/bin/scamp" 
-##echo "using $myscamp" ; $myscamp -v    #DEBUG  
+#version="2.6.3"     # this version used in DR4
+#version="2.7.8"    
+#version="2.9.2"
+#version="2.9.3-altaz_fix"    # to test, from EB
+version="2.10.0"   # avec Gaia-EDR3, mais tjrs sans support des PMs
 
-ver="$(echo $version | tr -d \. )"
-tag=$ver
-sconf=scamp_dr5.conf   # new one for DR5
+myscamp="/softs/astromatic/scamp/${version}-gnu/bin/scamp" 
+
+#myscamp="/home/hjmcc/Downloads/scamp/src/scamp" ; version="2.10.0_hjmcc"  # v2.10.0 with new intel compiler (from Henry)
+#myscamp="/home/moneti/bin/scamp_2.9.3_morpho"   ; version="2.9.3_morpho"  ; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/softs/plplot/5.15.0/lib
 #-----------------------------------------------------------------------------------------------
 
 cd $WRK/images
@@ -83,44 +92,40 @@ cd $WRK/images
 nldacs=$(cat $list | wc -l)
 naheads=$(ls v20*.ahead 2> /dev/null | wc -l)
 
+sconf=scamp_dr5.conf   # new one for DR5
+logfile=$WRK/pscamp${ptag}.log ; rm -f $logfile
+
 args=" -c $sconf  -MAGZERO_OUT $magzero  -ASTRINSTRU_KEY OBJECT "
 catal="-ASTREFCAT_NAME GAIA-EDR3_1000+0211_r61.cat"  # use a local reference catalogue
 ahead="-AHEADER_GLOBAL vista_gaia.ahead -MOSAIC_TYPE SAME_CRVAL"
 extra="-XML_NAME pscamp${ptag}.xml"
 pname="-CHECKPLOT_NAME fgroups${ptag},referr2d${ptag},referr1d${ptag},interr2d${ptag},interr1d${ptag}"
 
-logfile=$WRK/pscamp${ptag}.log ; rm -f $logfile
-
 # build command line
 comm="$myscamp @$list  $args  $ahead  $catal  $extra $pname $verb"
 
-# make links to needed files
-if [ ! -e scamp_dr5.conf ]; then ln -sf $confdir/scamp_dr5.conf . ; fi
-if [ ! -e vista_gaia.ahead ]; then ln -sf $confdir/vista_gaia.ahead . ; fi
-if [ ! -e GAIA-EDR3_1000+0211_r61.cat ]; then ln -sf $confdir/GAIA-EDR3_1000+0211_r61.cat . ; fi
 
 ec "# Using $list with $nldacs files; and $naheads ahead files "
 ec "# Filter is $FILTER; magzero = $magzero" 
 ec "# Using $myscamp  ==> $($myscamp -v)"
 ec "# PBS resources: $(head $WRK/$module.sh | grep nodes= | cut -d \  -f3)"
-ec "# Scamp config file is $(ls -L $sconf)"
+ec "# Scamp config file is $sconf"
 ec "# logfile is $logfile"
 ec "# Command line is:"
 ec "    $comm"
-ec " "
+ec ""
 if [[ $dry == 'T' ]]; then
 	echo "[---DRY---] Working directory is $WRK"
 	echo "[---DRY---] Input files are like $(tail -1 $list)"
     echo "[---DRY---] >>  Dry-run of $0 finished .... << "
 	ec "#-----------------------------------------------------------------------------"
+#	for f in $(cat $list); do rm $f .; done
 	exit 0
+else
+	for f in $(cat $list); do ln -s ldacs/$f .; done
 fi
 
-#- ec "#-----------------------------------------------------------------------------"
-#- ec "## Running scamp on $list with $nldacs entries "
-#- ec "## Command line is:"
-#- echo $comm
-#- ec "#-----------------------------------------------------------------------------"
+#-----------------------------------------------------------------------------
 
 bdate=$(date "+%s.%N")
 
@@ -156,39 +161,14 @@ else
 	ec "# ... NO warnings found - congrats"; rm $WRK/$module.warn
 fi 
 
-#-## extract contrast results
-#-#
-#-#if [ $(cat fluxscale.dat | wc -l) -ge 1 ]; then
-#-#	res=$(grep -v -e INF -e 0.00000000 fluxscale.dat | tr -s ' ' | cut -d' ' -f2 | awk -f $scripts/std.awk )
-#-#	ec "# mean flux scale:  $res"
-#-#else
-#-#	ec "#### ATTN: FLUXSCLE not found in .head files ... "
-#-#fi
-#-#
-#-## stats on contrast
-#-#$pydir/pscamp_xml2dat.py   # extract contrast, shift, and other info from scamp xml file
-#-#if [ -e $logfile ]; then   # same info from logfile
-#-#	grep "ld\ A" pscamp.log | tr \" \   | sort -n -k10 > pscamp_tb3.log
-#-#	ec "# Mean X-Y contrast: $(awk '{print $10}' pscamp_tb3.log | awk -f $scripts/std.awk )"
-#-#    # files with low contrast:
-#-#	awk '{if ($10 < 2) print $0}' pscamp_tb3.log > pscamp_low.log
-#-#	nlow=$(cat pscamp_low.log 2> /dev/null | wc -l) ; nl=$(cat pscamp_tb3.log | wc -l)
-#-#	if [ $nl -ge 1 ]; then
-#-#		ec "# Found $nlow of $nl files with low contrast ($(echo "100 * $nlow / $nl" | bc)%). "
-#-#	else
-#-#		ec "# Found $nlow of $nl files with low contrast "
-#-#		rm pscamp_low.log
-#-#	fi
-#-#else
-#-#	ec "# No logfile - no stats on contrast"
-#-#fi
+# extract table 3 form xml file
+$pydir/scamp_xml2dat.py pscamp${ptag}.xml 
 
 # rename the pngs to have the filter name and the pass - just to rename the png files
 if [ $FILTER == 'NB118' ]; then FILTER='N'; fi
 if [ $FILTER == 'Ks' ];    then FILTER='K'; fi
 
 rename _1.png _${FILTER}.png [f,i,r]*_1.png
-#rename .png _${FILTER}.png distort*.png
 
 #-----------------------------------------------------------------------------
 # and finish up
@@ -196,6 +176,8 @@ rename _1.png _${FILTER}.png [f,i,r]*_1.png
 ec " >>>>  pscamp finished - walltime: $(wt)  <<<<"
 ec "#-----------------------------------------------------------------------------"
 ec ""
+
+for f in $(cat $list); do rm $f ; done   # cleanup
 exit 0
 
 #-----------------------------------------------------------------------------
