@@ -16,6 +16,7 @@
 # v3.02: updates for qFits pscamp, and more                        (21.oct.20)
 # v3.03: split pscamp run by pairs of paws                         (09.dec.20)
 # v3.04: general revision of swarp for pass 1                      (23.jan.21)
+# v3.05: general debugging to end                                  (19.may.21)
 ##-----------------------------------------------------------------------------
 set -u  # exit if a variable is not defined - recommended by Stephane
 
