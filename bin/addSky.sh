@@ -66,12 +66,12 @@ echo "------------------------------------------------------------------"
 
 bdate=$(date "+%s")
 comm="python $pydir/addSky.py -t $list -o _withSky.fits"
-echo "% $comm >> $logfile "
+echo "% $comm  "
 if [ $dry == 'T' ]; then
     echo " ## DRY MODE - do nothing ## "
 	exit 0
 else
-	$comm >> $logfile
+	$comm 
 fi
 
 #-----------------------------------------------------------------------------

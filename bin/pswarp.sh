@@ -79,10 +79,11 @@ fi
 
 if [[ "$rhost" =~ $(hostname) ]]; then
 	workdir=$WRK/images/${pawname}_$FILTER
-    remoteRun=0
+#    remoteRun=0
 else
 	workdir=/scratch/${pawname}_$FILTER      # work dir
-    remoteRun=1
+	
+#    remoteRun=1
 fi
 
 if [ ! -d $datadir ];  then echo "ERROR: $WRK/images not found ... quitting"; exit 5; fi
@@ -111,7 +112,6 @@ ec "## outname $outname,  pass $pass"
 ec "## ==> build links to data files"
 
 ln -sf $datadir/$list .
-ln -sf $confdir/@HEADFILE@ $outname.head 
 for f in $(cat $list); do r=${f%.fits}
 	if [ $pass -eq 1 ]; then 
 		ln -sf $datadir/origs/${r}.fits $f
@@ -122,19 +122,20 @@ for f in $(cat $list); do r=${f%.fits}
 	ln -sf $datadir/heads/${r}.head .
 done
 
-# Build command line
+#### products and logfile written directly into work area to easily follow progress
+outfile=$datadir/$outname  # to build products directly there
+ln -sf $confdir/@HEADFILE@ $outfile.head 
+logfile=$datadir/pswarp${pass}_$pawname.log
 
-# command line for DR5
+# Build command line for DR5
 args=" -c $confdir/swarp238.conf -WEIGHT_SUFFIX _weight.fits  -WEIGHT_TYPE MAP_WEIGHT \
-   -IMAGEOUT_NAME  ${outname}.fits  -WEIGHTOUT_NAME ${outname}_weight.fits   \
-   -COMBINE_TYPE CLIPPED  -CLIP_SIGMA 2.8  -CLIP_WRITELOG Y  -CLIP_LOGNAME ${outname}_clip.log \
+   -IMAGEOUT_NAME  ${outfile}.fits  -WEIGHTOUT_NAME ${outfile}_weight.fits   \
+   -COMBINE_TYPE CLIPPED  -CLIP_SIGMA 2.8   \
    -RESAMPLE Y  -RESAMPLING_TYPE LANCZOS2  -FSCALASTRO_TYPE VARIABLE  -COMBINE_BUFSIZE 8192 \
    -SUBTRACT_BACK $subsky  -DELETE_TMPFILES Y  -NTHREADS 36 -WRITE_XML Y  -XML_NAME ${outname}.xml   "
+   # -CLIP_WRITELOG Y  -CLIP_LOGNAME ${outname}_clip.log
 
-#### logfiles - will be renamed in pipeline to separate pass1/2  MAYBE
-logfile=$WRK/images/pswarp${pass}_$pawname.log
-
-# ATTN: lots of jobs aborted with  -COMBINE_BUFSIZE 16384!!  ok with 8192
+# ATTN: lots of jobs aborted with  -COMBINE_BUFSIZE 16384!!  ok with 8192 (def)
 
 ec "-----------------------------------------------------------------------------" > $logfile
 ec " - logfile of pswarp.sh  " >> $logfile
@@ -152,7 +153,21 @@ ecn "   "; ls -lh ${imroot%.fits}_weight.fits | tr -s ' ' | cut -d' ' -f9-11
 
 if [ $dry == 'F' ]; then
 	$comm >> $logfile 2>&1
-	mv ${outname}*.* $logfile $datadir
+	nerr=$(grep Error $logfile | wc -l)
+	if [ $nerr -ge 1 ]; then
+		ecn "ERROR: found Errors in logfile:"
+		grep Error $logfile
+		ecn "ERROR: check results in $workdir"
+		errcode=4
+	else
+		ec "# swarp run successful "
+		ec "# $(tail -1 $logfile) "
+		ec "# mv products back to $WRK "
+		#mv substack*.fits $datadir
+		errcode=0
+        ec "# Clean up ... delete $workdir"; rm -rf $workdir
+	fi
+	mv ${outname}*.*  $datadir
     #-----------------------------------------------------------------------------
     # and finish up
     #-----------------------------------------------------------------------------
@@ -162,14 +177,11 @@ else
 	echo "## Command line is:"
 	echo " % $comm " 
 	echo "## exit dry mode"
+	errcode=10
 fi
 echo "------------------------------------------------------------------"
 echo ""
 
-#cd $datadir
-# Clean up ...
-rm -rf $workdir
 
-
-exit 0
+exit $errcode
        

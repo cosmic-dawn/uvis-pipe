@@ -42,7 +42,7 @@ parser.add_option('-D', '--dry',   dest='dry', help='Dry mode; list what is to b
 
 
 print "#---------------------------------------------------------------------"
-print "#  Begin run of subSky.py"
+print "###  Begin run of subSky.py"
 
 # Parse command line
 try:
@@ -88,14 +88,15 @@ for line in lines:
     des = root + '_clean.fits'        # output final cleaned image
 
     os.system('cp ' + ima +' '+ sub)
-    os.system('cp ' + ima +' '+ des)
+    cp_skykeys(sky, sub)
+#    os.system('cp ' + ima +' '+ des)
 
     psky = pyfits.open(sky)
     pmsk = pyfits.open(msk)
     psub = pyfits.open(sub, mode='update')     
     
     #-----------------------------------------------------------------------------
-    # 1. subtract the sky and a constant sky offset    
+    # 1. subtract the sky and a constant sky offset: ==> sub = _sub.fits
     #-----------------------------------------------------------------------------
     for ext in exts:
         psub[ext].data -= psky[ext].data
@@ -104,31 +105,39 @@ for line in lines:
         marr = ma.array(data, mask=(1-mask))
         psub[ext].data -= marr.mean()
         
+    # add some history to primary header:
+    psub[0].header['history'] = "# Subtracted local sky from %s "%sky
+
     psky.close()
-    psub.close()  
-    print " - sky-subtracted image is %s "%(sub)
+#    psub.close()  
+    print "  - output sky-subtracted image is %s "%(sub)
     # copy sky kwds from _sky images to _sub
-    print " - copy the _sky keywords in the _sub image"
-    cp_skykeys(sky, sub)
+#    print " - copy the _sky keywords in the _sub image"
 
     #-----------------------------------------------------------------------------
-    # 3. rm large-scale background variations (SExtractor)
+    # 2. rm large-scale background variations (SExtractor): ==> cln = _bgclean.fits
     #-----------------------------------------------------------------------------
 
     chkims = " -CHECKIMAGE_TYPE -BACKGROUND  -CHECKIMAGE_NAME "+cln
     bksize = " -BACK_SIZE %i  -BACK_FILTERSIZE %i "%(bsize, bfilt)
     verb = " -CATALOG_TYPE NONE  -INTERP_TYPE NONE  -VERBOSE_TYPE QUIET"
     args = " -c bgsub.conf " +chkims+bksize+ "  -WEIGHT_IMAGE "+msk
-    pars = " -PARAMETERS_NAME bgsub.param  -FILTER_NAME gauss_3.0_7x7.conv  -WRITE_XML Y -XML_NAME bgsub.xml "
+    pars = " -PARAMETERS_NAME bgsub.param  -FILTER_NAME gauss_3.0_7x7.conv  -WRITE_XML N"
     command = "sex "+ sub + args + pars + verb
     print command
     os.system(command)
 
-    print " - cleaned image is %s; copy sky kwds "%(cln)
-    cp_skykeys(sky, cln)
+    print "  - output cleaned image is %s"%(cln)
+    
+
+    # add some history to primary header:
+    pcln = pyfits.open(cln, mode="update")
+    pcln[0].header = psub[0].header    # copy header of input image
+    pcln[0].header['history'] = "# Removed large-scale background variations "
+    pcln.close()
 
 #    #-----------------------------------------------------------------------------
-#    # add the subtracted background value in the sub image
+#    # 3. add the subtracted background value in the sub image
 #    #-----------------------------------------------------------------------------
 #    pcln = pyfits.open(cln, mode='update')  # write kwds to this
 #
@@ -140,7 +149,7 @@ for line in lines:
 #    print "   bgd values:" + ",".join([" %0.1f"%x for x in back])
 
     #-----------------------------------------------------------------------------
-    # 2. destripe
+    # 4. destripe along Y, then X: ==> des = _clean.fits
     #-----------------------------------------------------------------------------
     os.system('cp ' + cln +' '+ des)
     pdes = pyfits.open(des, mode='update')     
@@ -162,15 +171,21 @@ for line in lines:
         data -= mmy
         #print " >> DEBUG: ext %-2i, mean mmx,mmy = %0.3f, %0.3f"%(ext, mmx.mean(), mmy.mean())
 
+    # add some history to primary header:
+    pdes[0].header['history'] = "# Destriped along Y, then X "
+
     pdes.close()  
     pmsk.close()
-    print " - destriped image is %s"%(des)
-    cp_skykeys(sky, des)
-    os.remove(cln)
-    os.remove(sub)
+    print "  - output destriped image is %s"%(des)
+
+#    cp_skykeys(sky, des)
+#    os.remove(cln)
+#    os.remove(sub)
 
 
-    print "#-----------------------------------------------"
+print "#---------------------------------------------------------------------"
+print "###  Finished run of subSky.py"
+print "#---------------------------------------------------------------------"
 
 #-----------------------------------------------------------------------------
 

@@ -256,12 +256,12 @@ for (im, ind) in zip(newimlist, range(len(newimlist))):
         hd1 = psub[0].header
         for (imm, index) in zip(skylist, range(len(skylist))):
             hd1['SKYIM' + str(index)] = imm
-        hd1['history'] = ' mkSky finished on %s '%(now.strftime("%Y-%m-%d %H:%M"))
-        hd1['history'] = ' On node %s '%os.uname()[1]
-        hd1['history'] = ' Files used: %s '%flist
+        hd1['history'] = '# mkSky finished on %s on node %s'%(now.strftime("%Y-%m-%d %H:%M"),os.uname()[1])
+#        hd1['history'] = ' On node %s '%os.uname()[1]
+        hd1['history'] = '# List of sky files used: %s '%flist
 
 
-    print "#---------------  Finished with %s  ----------------"%im 
+    print "#---------------  Finished processing %s  ----------------"%im 
 
 #-----------------------------------------------------------------------------
 
