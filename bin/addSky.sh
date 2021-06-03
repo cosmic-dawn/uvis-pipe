@@ -27,6 +27,7 @@ uvis=/home/moneti/softs/uvis-pipe    # top UltraVista code dir
 bindir=$uvis/bin                     # pipeline modules
 pydir=$uvis/python                   # python scripts
 confdir=$uvis/config                 # config dir
+errcode=0
 
 #-----------------------------------------------------------------------------
 # Setup
@@ -51,7 +52,7 @@ else
 fi
 
 #-----------------------------------------------------------------------------
-# do the real work ....
+# The REAL work ... done locally in images dir
 #-----------------------------------------------------------------------------
 
 cd $WRK/images
@@ -81,7 +82,7 @@ edate=$(date "+%s"); dt=$(($edate - $sdate))
 echo " >>>> $module.sh finished - walltime: $dt sec  <<<<"
 echo "------------------------------------------------------------------"
 echo ""
-exit 0
+exit $errcode
 
 #-----------------------------------------------------------------------------
  

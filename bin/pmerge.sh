@@ -32,6 +32,9 @@ uvis=/home/moneti/softs/uvis-pipe            # top UltraVista code dir
 bindir=$uvis/bin
 pydir=$uvis/python                # python scripts
 confdir=$uvis/config              # config dir
+errcode=0
+
+#-----------------------------------------------------------------------------
 
 # check  if run via shell or via qsub: 
 if [[ "$0" =~ "$module" ]]; then
@@ -56,7 +59,7 @@ verb=" -VERBOSE_TYPE LOG"
 tail=$(echo ${list%.lst} | cut -d\_ -f2)
 
 #-----------------------------------------------------------------------------
-# do the real work ....
+# The REAL work ... done locally in images dir
 #-----------------------------------------------------------------------------
 
 bdate=$(date "+%s")
@@ -67,7 +70,7 @@ if [ ! -s $list ]; then echo "ERROR: $list not found in $WRK/images ... quitting
 
 stout=$stout.fits
 wtout=${stout%.fits}_weight.fits
-logfile=$WRK/pmerge.log
+logfile=$WRK/images/pmerge.log
 
 # Command to produce the stack and its weight ...
 args=" -c $confdir/swarp238.conf  -COMBINE_BUFSIZE 8192 -RESAMPLE N  -WEIGHT_SUFFIX _weight.fits \
@@ -120,4 +123,4 @@ edate=$(date "+%s"); dt=$(($edate - $sdate))
 echo "------------------------------------------------------------------"
 echo " >>>> pmerge finished - walltime: $dt sec  <<<<"
 echo "------------------------------------------------------------------"
-exit 0
+exit $errcode

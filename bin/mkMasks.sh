@@ -43,6 +43,7 @@ uvis=/home/moneti/softs/uvis-pipe    # top UltraVista code dir
 bindir=$uvis/bin                     # pipeline modules
 pydir=$uvis/python                   # python scripts
 confdir=$uvis/config                 # config dir
+errcode=0
 
 #-----------------------------------------------------------------------------
 # Setup
@@ -73,7 +74,7 @@ if [ $# -eq 2 ]; then
 fi
 
 #-----------------------------------------------------------------------------
-# do the real work ....
+# The REAL work ... done in temporary directory
 #-----------------------------------------------------------------------------
 
 datadir=$WRK/images              # reference dir
@@ -125,14 +126,6 @@ ec "## Command line is:"
 ec "% $comm "
 ec ""
 
-###  check available space - see pswarp_multi.sh for example
-###  hopefully not needed when using bigscratch nodes
-
-##case $FILTER in
-##    N | J | H | P) convdir="/n08data/UltraVista/ConvertedData/${FILTER}/images" ;;
-##    Y | K     ) convdir="/n09data/UltraVista/ConvertedData/${FILTER}/images" ;;
-##    * ) ec "# Unknown filter - quitting"; exit 5 ;;
-##esac
 
 ec "## Link the needed data and config files... "
 cp $datadir/$list .
@@ -201,4 +194,5 @@ rm -rf $workdir
 edate=$(date "+%s"); dt=$(($edate - $sdate))
 echo " >>>> $module.sh finished - walltime: $dt sec  <<<<"
 echo "------------------------------------------------------------------"
-exit 0
+
+exit $errcode

@@ -57,6 +57,7 @@ for line in lines:
             #print ">> ext %i, npix %i"%(i, len(zz[0]))
             ww[i].data[zz] = 0
         
+        ww[0].header['history'] = "# weights updated based on %s"%sky
         ww.close(output_verify='silentfix+ignore')
         print ">> updated weight %s; %i pixels masked" %(wgt, tot)
         ss.close()

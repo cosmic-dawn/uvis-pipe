@@ -33,6 +33,7 @@ uvis=/home/moneti/softs/uvis-pipe # top UltraVista code dir
 bindir=$uvis/bin                  # pipeline modules
 pydir=$uvis/python                # python scripts
 confdir=$uvis/config              # config dir
+errcode=0
 
 ec() { echo "$(date "+[%d.%h.%y %T"]) $1 "; }    # echo with date
 mycd() { \cd $1; ec " --> $PWD"; }               # cd with message
@@ -59,7 +60,7 @@ else
 fi
 
 #-----------------------------------------------------------------------------
-# Work ....
+# The REAL work ... done in temporary workdir
 #-----------------------------------------------------------------------------
 
 datadir=$WRK/images              # reference dir
@@ -180,7 +181,6 @@ else
 		mv v20*_*_sky.fits  $logfile.log  $logfile.err  $datadir/ 
 		rm v20*_0????.fits v20*_weight.fits v20*_mask.fits      # the links
 		rm missfits.xml bgsub.xml *.con? *.param zeroes.fits    # other stuff
-		errcode=0
 	fi
 fi
 
@@ -193,6 +193,6 @@ if [ $errcode -eq 0 ]; then rm -rf $workdir; fi
 edate=$(date "+%s"); dt=$(($edate - $sdate))
 echo " >>>> $module.sh finished - walltime: $dt sec  <<<<"
 echo "------------------------------------------------------------------"
-exit $errcode
 
+exit $errcode
 #-----------------------------------------------------------------------------

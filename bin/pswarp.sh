@@ -3,7 +3,7 @@
 #PBS -N sw_@FILTER@_@PAW@
 #PBS -o @IDENT@_@PAW@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=22,walltime=44:00:00
+#PBS -l nodes=1:ppn=@PPN@,walltime=44:00:00
 #-----------------------------------------------------------------------------
 # pswarp:  pswarp script
 # requires: astropy.io.fits, uvis scripts and libs
@@ -32,6 +32,7 @@ uvis=/home/moneti/softs/uvis-pipe            # top UltraVista code dir
 bindir=$uvis/bin
 #pydir=$uvis/python                # python scripts
 confdir=$uvis/config              # config dir
+errcode=0
 
 #-----------------------------------------------------------------------------
 # Setup
@@ -65,7 +66,7 @@ outname=substack_${pawname}
 echo "DEBUG: pawname $pawname" ; echo "DEBUG: outname $outname" 
 
 #-----------------------------------------------------------------------------
-# do the real work ....
+# The REAL work ... done in temporary workdir
 #-----------------------------------------------------------------------------
 
 datadir=$WRK/images            # reference dir containing data
@@ -164,7 +165,6 @@ if [ $dry == 'F' ]; then
 		ec "# $(tail -1 $logfile) "
 		ec "# mv products back to $WRK "
 		#mv substack*.fits $datadir
-		errcode=0
         ec "# Clean up ... delete $workdir"; rm -rf $workdir
 	fi
 	mv ${outname}*.*  $datadir
@@ -181,7 +181,6 @@ else
 fi
 echo "------------------------------------------------------------------"
 echo ""
-
 
 exit $errcode
        

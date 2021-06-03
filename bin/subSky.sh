@@ -3,7 +3,7 @@
 #PBS -N subSky_@FILTER@_@ID@
 #PBS -o @IDENT@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=5,walltime=40:00:00
+#PBS -l nodes=1:ppn=9,walltime=40:00:00
 #-----------------------------------------------------------------------------
 # module: subSky wrapper for subSky.py
 # requires: intelpython, astropy.io.fits, uvis scripts and libs
@@ -34,6 +34,7 @@ uvis=/home/moneti/softs/uvis-pipe    # top UltraVista code dir
 bindir=$uvis/bin                     # pipeline modules
 pydir=$uvis/python                   # python scripts
 confdir=$uvis/config                 # config dir
+errcode=0
 
 #-----------------------------------------------------------------------------
 # Setup
@@ -56,7 +57,7 @@ else
 fi
 
 #-----------------------------------------------------------------------------
-# The real work ....
+# The REAL work ... done in temporary workdir
 #-----------------------------------------------------------------------------
 
 datadir=$WRK/images            # reference dir
@@ -88,7 +89,8 @@ nl=$(cat $list | wc -l)
 # run these in a separate subdir to avoid problems with parallel runs
 if [ -d $workdir ]; then rm -rf $workdir/*; fi
 
-mkdir $workdir ; mycd $workdir
+mkdir $workdir 
+mycd $workdir
 if [[ $(hostname) =~ 'c' ]]; then
 	echo "ERROR:  On login node - must go to compute node - quitting"
 	exit 8
@@ -161,25 +163,18 @@ else
 
 	# check products
 	nsub=$(ls v20*_clean.fits 2> /dev/null | wc -l)
-	if [ $nsub -eq 0 ]; then 
-		echo "!!! BIG PROBLEM: no outputs found"
-		edate=$(date "+%s"); dt=$(($edate - $sdate))
-		echo " >>>> $module.sh finished - walltime: $dt sec  <<<<"
-		echo "------------------------------------------------------------------"
-		exit 3
+	if [ $nsub -ne $nims ]; then
+		echo "!!! PROBLEM: found only $nsub _sky files of $nims expected"
+		errcode=5
+	else
+		echo " >> Found $nsub _clean files - move them back to \$WRK/images/ and clean up"
+	    # mv products back to images/
+		mv v20*_*_sub.fits v20*_*_bgcln.fits  $datadir       # intermediate products
+		mv v20*_*_clean.fits  $logfile  $datadir             # final products
 	fi
 
-	echo " >> Found $nsub _clean files - move them back to images/ and clean up"
-	# mv products back to images/
-	mv v20*_*_sub.fits v20*_*_bgcln.fits  $datadir       # intermediate products
-	mv v20*_*_clean.fits  $logfile  $datadir             # final products
-#	rm v20*_*_sub.fits v20*_*_bgcln.fits    # intermediate products
-#	rm v20*_0????.fits v20*_weight.fits v20*_mask.fits  v20*_*_sky.fits   # links
-#	rm bgsub.xml *.con? *.param  # zeroes.fits
-fi
-
 cd $datadir
-rm -rf $workdir
+if [ errcode -eq 0 ]; then rm -rf $workdir; fi
 	
 #-----------------------------------------------------------------------------
 # and finish up
@@ -187,6 +182,6 @@ rm -rf $workdir
 edate=$(date "+%s"); dt=$(($edate - $sdate))
 echo " >>>> $module.sh finished - walltime: $dt sec  <<<<"
 echo "------------------------------------------------------------------"
-exit 0
+exit $errcode
 
 #-----------------------------------------------------------------------------

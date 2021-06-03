@@ -33,6 +33,7 @@ uvis=/home/moneti/softs/uvis-pipe            # top UltraVista code dir
 bindir=$uvis/bin
 pydir=$uvis/python                # python scripts
 confdir=$uvis/config              # config dir
+errcode=0
 
 # check  if run via shell or via qsub: 
 if [[ "$0" =~ "$module" ]]; then
@@ -50,7 +51,7 @@ else
 fi
 
 #-----------------------------------------------------------------------------
-# do the real work ....
+# The REAL work ... done in images dir - no need for temp subdirs
 #-----------------------------------------------------------------------------
 
 cd $WRK/images
@@ -71,22 +72,30 @@ echo "% $comm \> $logfile.log 2\> $logfile.err"
 if [ $dry -ne 1 ]; then
     $comm  > $logfile.log 2> $logfile.err
 
-	nskip=$(grep ERROR $logfile.log | wc -l)
-	if [ $nskip -ne 0 ]; then
-		ec "!!! ERROR: $nskip _sky files incomplete -  see $logfile.skip"
+	# Check logfile - should be same length as input list
+	nn=$(cat $logfile.log | wc -l)
+	nl=$(cat $list | wc -l)
+	if [ $nn -ne $nl ]; then
+		ec "!!! ERROR: $logfile.log shorter than input list"
+		errcode=7
+	fi
+		
+	nerr=$(grep ERROR $logfile.log | wc -l)
+	if [ $nerr -ne 0 ]; then
+		ec "!!! ERROR: $nerr errors found in $logfile.log"
+		errcode=8
 	fi
 
-    # check products
-	nn=$(ls v20*_weight.fits 2> /dev/null | wc -l)
-	if [ $nn -lt $nl ]; then 
-		ec "!!! PROBLEM: not enough masks found"
+	nerr=$(cat $logfile.err 2> /dev/null | wc -l)
+	if [ -s $logfile.err ]; then   #exists and size != 0
+		ec "!!! ERROR: Foound other errors - see $logfile.err"
+		errcode=9
 	else
-		ec " >>> Built $nn new weight files  <<<<"
+		rm $logfile.err
 	fi
-	if [ ! -s updateWeights_$logfile.err ]; then rm $logfile.err; fi
 fi
 
 edate=$(date "+%s"); dt=$(($edate - $sdate))
 echo " >>>> $module.sh finished - walltime: $dt sec  <<<<"
 echo "------------------------------------------------------------------"
-exit 0
+exit $errcode
