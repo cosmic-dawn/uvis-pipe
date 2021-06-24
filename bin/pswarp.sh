@@ -70,21 +70,21 @@ echo "DEBUG: pawname $pawname" ; echo "DEBUG: outname $outname"
 #-----------------------------------------------------------------------------
 
 datadir=$WRK/images            # reference dir containing data
-
-# build work dir: 
 rhost=$(echo $WRK | cut -c 2-4)  # host of WRK
+
 if [[ "$rhost" =~ "c0" ]]; then
 	echo "### On login node $rhost ... not good ... quitting"
 	exit 0
 fi
 
-if [[ "$rhost" =~ $(hostname) ]]; then
-	workdir=$WRK/images/${pawname}_$FILTER
-#    remoteRun=0
-else
-	workdir=/scratch/${pawname}_$FILTER      # work dir
-	
-#    remoteRun=1
+# build work dir: 
+dirname=$(echo $list | cut -d\. -f1)
+whost=$(hostname)   #; echo "DEBUG: ref/work hosts: $rhost  $whost"
+
+if [[ $whost == 'n09' ]] || [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
+    workdir=/${whost}data/${dirname}_$FILTER     # node with small scratch
+else                        
+    workdir=/scratch/${dirname}_$FILTER          # other node
 fi
 
 if [ ! -d $datadir ];  then echo "ERROR: $WRK/images not found ... quitting"; exit 5; fi

@@ -84,12 +84,10 @@ rhost=$(echo $WRK | cut -c 2-4)  # host of $WRK
 dirname=$(echo $list | cut -d\. -f1)
 whost=$(hostname)   #; echo "DEBUG: ref/work hosts: $rhost  $whost"
 
-if [[ "$rhost" =~ $whost ]]; then  # on local node
-    workdir=$WRK/images/${dirname}_$FILTER
-    remoteRun=0
-else                               # on remote (bigscratch) node
-    workdir=/scratch/${dirname}_$FILTER
-    remoteRun=1
+if [[ $whost == 'n09' ]] || [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
+    workdir=/${whost}data/${dirname}_$FILTER     # node with small scratch
+else                        
+    workdir=/scratch/${dirname}_$FILTER          # other node
 fi
 
 if [ ! -d $datadir ];       then echo "ERROR: $WRK/images not found ... quitting"; exit 5; fi

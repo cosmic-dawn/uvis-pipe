@@ -63,16 +63,19 @@ fi
 datadir=$WRK/images            # reference dir
 rhost=$(echo $WRK | cut -c 2-4)  # host of WRK
 
+if [[ "$rhost" =~ "c0" ]]; then
+	echo "### On login node $rhost ... not good ... quitting"
+	exit 0
+fi
+
 # build work dir: 
 dirname=$(echo $list | cut -d\. -f1)
 whost=$(hostname)   #; echo "DEBUG: ref/work hosts: $rhost  $whost"
 
-if [[ "$rhost" =~ $whost ]]; then  # on local node
-	workdir=$WRK/images/${dirname}_$FILTER
-	remoteRun=0
-else                               # on remote (bigscratch) node
-	workdir=/scratch/${dirname}_$FILTER
-	remoteRun=1
+if [[ $whost == 'n09' ]] || [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
+	workdir=/${whost}data/${dirname}_$FILTER     # node with small scratch
+else 
+	workdir=/scratch/${dirname}_$FILTER          # other node
 fi
 
 if [ ! -d $datadir ];       then echo "ERROR: $WRK/images not found ... quitting"; exit 5; fi
@@ -161,27 +164,35 @@ else
 	# do the work
     $comm | grep -v ^$ > $logfile 2>&1    # removing blank lines
 
-	# check products
-	nsub=$(ls v20*_clean.fits 2> /dev/null | wc -l)
+	# check products: num files and file size
+	ls -l v20*_clean.fits 2> /dev/null > done.lst
+	nsub=$(cat done.lst | wc -l)
+	ninc=$(grep -v 257M done.lst | wc -l)
 	if [ $nsub -ne $nims ]; then
-		echo "!!! PROBLEM: found only $nsub _sky files of $nims expected"
+		ec "!!! PROBLEM: found only $nsub _clean files of $nims expected"
+		errcode=4
+	elif [ $ninc -eq 0 ]; then
+		ec "!!! PROBLEM: found $ninc incomplete _clean files"
 		errcode=5
+
 	else
-		echo " >> Found $nsub _clean files - move them back to \$WRK/images/ and clean up"
+		ec " >> Found $nsub _clean files - move them back to \$WRK/images/ and clean up"
 	    # mv products back to images/
-		mv v20*_*_sub.fits v20*_*_bgcln.fits  $datadir       # intermediate products
+#		mv v20*_*_sub.fits v20*_*_bgcln.fits  $datadir       # keep intermediate products
+		rm v20*_*_sub.fits v20*_*_bgcln.fits                 # delete intermediate products
 		mv v20*_*_clean.fits  $logfile  $datadir             # final products
 	fi
+fi
 
 cd $datadir
-if [ errcode -eq 0 ]; then rm -rf $workdir; fi
+if [ $errcode -eq 0 ]; then rm -rf $workdir; fi
 	
 #-----------------------------------------------------------------------------
 # and finish up
 #-----------------------------------------------------------------------------
 edate=$(date "+%s"); dt=$(($edate - $sdate))
-echo " >>>> $module.sh finished - walltime: $dt sec  <<<<"
-echo "------------------------------------------------------------------"
+ec " >>>> $module.sh finished - walltime: $dt sec  <<<<"
+ec "------------------------------------------------------------------"
 exit $errcode
 
 #-----------------------------------------------------------------------------
