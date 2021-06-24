@@ -78,13 +78,10 @@ if [[ "$rhost" =~ "c0" ]]; then
 	exit 0
 fi
 
-if [[ "$rhost" =~ $(hostname) ]]; then
-	workdir=$WRK/images/${pawname}_$FILTER
-#    remoteRun=0
-else
-	workdir=/scratch/${pawname}_$FILTER      # work dir
-	
-#    remoteRun=1
+if [[ $whost == 'n09' ]] || [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
+    workdir=/${whost}data/${dirname}_$FILTER     # node with small scratch
+else                        
+    workdir=/scratch/${dirname}_$FILTER          # other node
 fi
 
 if [ ! -d $datadir ];  then echo "ERROR: $WRK/images not found ... quitting"; exit 5; fi

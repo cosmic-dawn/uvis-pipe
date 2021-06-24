@@ -6,7 +6,7 @@
  file to create a _zeroes.file for each input file
  input : l,list   : list of sky-subtracted images
        : z,zeroes : name of zeroes.fits images; def = zeroes.fits
- It is assumed that there are pure sky images named as in list, but ending with .sky.fits
+ It is assumed that there are pure sky images named as in list, but ending with _sky.fits
  Method: for mask pix p: if sky(p)=0; then mask(p)=0; else mask(p)=zeroes(p)
 
  18-02-20, AMo: taylored for UltraVista:
