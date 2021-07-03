@@ -1605,7 +1605,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         # Don't need links to withSky images here (images/): mkSky work is done in 
         # subdirs and needed links are created there. 
             
-        nexp=200
+        nexp=299
         #ec "# split into chunks of max $nexp images, normally doable in 32 hrs"
         nts=$(echo "$nimages / $nexp + 1" | bc)
 
