@@ -44,7 +44,7 @@ if [[ "$0" =~ "$module" ]]; then
     FILTER=$FILTER
     if [[ "${@: -1}" == 'dry' ]]; then dry='T'; else dry='F'; fi
     stout=@STOUT@
-    pass=1
+    pass=2
 else
     echo "$module: running via qsub (from pipeline)"
     dry=@DRY@
@@ -70,12 +70,20 @@ if [ ! -s $list ]; then echo "ERROR: $list not found in $WRK/images ... quitting
 
 stout=$stout.fits
 wtout=${stout%.fits}_weight.fits
-logfile=$WRK/images/pmerge.log
+# if 
+if [ ${list:7:3} = 'paw' ]; then
+	suff=${list:7:4}
+else
+	suff="full"
+fi
+
+logfile=$WRK/images/pmerge_$suff.log
 
 # Command to produce the stack and its weight ...
-args=" -c $confdir/swarp238.conf  -COMBINE_BUFSIZE 8192 -RESAMPLE N  -WEIGHT_SUFFIX _weight.fits \
-       -WEIGHT_TYPE MAP_WEIGHT  -COMBINE_TYPE WEIGHTED  -IMAGEOUT_NAME $stout  -WEIGHTOUT_NAME $wtout \
-       -WRITE_XML N   -SUBTRACT_BACK N  "
+args=" -c $confdir/swarp238.conf  -WEIGHT_SUFFIX _weight.fits -WEIGHT_TYPE MAP_WEIGHT  \
+       -IMAGEOUT_NAME $stout  -WEIGHTOUT_NAME $wtout \
+       -COMBINE_TYPE WEIGHTED  -RESAMPLE N  -DELETE_TMPFILES N  \
+       -SUBTRACT_BACK N  -WRITE_XML Y  -XML_NAME pmerge.xml "
 ec "# stack: $stout"
 ec "# args:  $args"
 

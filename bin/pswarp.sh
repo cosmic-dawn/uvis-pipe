@@ -3,7 +3,7 @@
 #PBS -N sw_@FILTER@_@PAW@
 #PBS -o @IDENT@_@PAW@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=@PPN@,walltime=44:00:00
+#PBS -l nodes=1:ppn=@PPN@,walltime=48:00:00
 #-----------------------------------------------------------------------------
 # pswarp:  pswarp script
 # requires: astropy.io.fits, uvis scripts and libs
@@ -73,11 +73,11 @@ datadir=$WRK/images            # reference dir containing data
 rhost=$(echo $WRK | cut -c 2-4)  # host of WRK
 
 if [[ "$rhost" =~ "c0" ]]; then
-	echo "### On login node $rhost ... not good ... quitting"
+	ec "### On login node $rhost ... not good ... quitting"
 	exit 0
 fi
 
-# build work dir: 
+# build work dir name: 
 dirname=$(echo $list | cut -d\. -f1)
 whost=$(hostname)   #; echo "DEBUG: ref/work hosts: $rhost  $whost"
 
@@ -91,24 +91,27 @@ if [ ! -d $datadir ];  then echo "ERROR: $WRK/images not found ... quitting"; ex
 if [ ! -s $datadir/$list ]; then echo "ERROR: $list not found in $WRK/images ... quitting"; exit 5; fi
 
 nl=$(cat $datadir/$list | wc -l)
-echo "=================================================================="
-echo " >>>>  Begin pswarp $list on $nl files <<<<"
-echo "------------------------------------------------------------------"
+echo "  =================================================================="
+echo "    >>>>  Begin pswarp $list on $nl files <<<<"
+echo "  ------------------------------------------------------------------"
 
-#mycd $datadir
-echo "## Working on $(hostname); temprary work dir is $workdir; data on $WRK"
+ec "## Working on $(hostname); temprary work dir name is $workdir; data on $WRK"
 
 # run these in a separate subdir to avoid problems with parallel runs
 if [ -d $workdir ]; then 
-	echo "## Found old $workdir - delete  its contents" 
+	ec "## Found old $workdir - delete all its contents" 
 	rm -rf $workdir/*
 else
-	echo "## Build new $workdir" 
+	ec "## Build new $workdir" 
 	mkdir $workdir
+	if [ $? -ne 0 ]; then 
+		ec "ERROR: can't mkdir $workdir ... quitting"
+		exit 3
+	fi
 fi
 
-mycd $workdir 
-ec "## For $pawname working in $(hostname):$workdir"  
+mycd $workdir ; sleep 1
+ec "## For $pawname working in $(hostname):$(pwd)"  
 ec "## outname $outname,  pass $pass"
 ec "## ==> build links to data files"
 
@@ -126,14 +129,15 @@ done
 #### products and logfile written directly into work area to easily follow progress
 outfile=$datadir/$outname  # to build products directly there
 ln -sf $confdir/@HEADFILE@ $outfile.head 
-logfile=$datadir/pswarp${pass}_$pawname.log
+logfile=$datadir/pswarp_$pawname.log   # rm $pass from name - 22.jan.22
 
 # Build command line for DR5
-args=" -c $confdir/swarp238.conf -WEIGHT_SUFFIX _weight.fits  -WEIGHT_TYPE MAP_WEIGHT \
+# Keep the temp file for eventual debugging
+args=" -c $confdir/swarp238.conf  -WEIGHT_SUFFIX _weight.fits  -WEIGHT_TYPE MAP_WEIGHT \
    -IMAGEOUT_NAME  ${outfile}.fits  -WEIGHTOUT_NAME ${outfile}_weight.fits   \
-   -COMBINE_TYPE CLIPPED  -CLIP_SIGMA 2.8   \
-   -RESAMPLE Y  -RESAMPLING_TYPE LANCZOS2  -FSCALASTRO_TYPE VARIABLE  -COMBINE_BUFSIZE 8192 \
-   -SUBTRACT_BACK $subsky  -DELETE_TMPFILES Y  -NTHREADS 36 -WRITE_XML Y  -XML_NAME ${outname}.xml   "
+   -COMBINE_TYPE CLIPPED  -CLIP_SIGMA 2.8  -DELETE_TMPFILES N   \
+   -RESAMPLE Y  -RESAMPLING_TYPE LANCZOS2  \
+   -SUBTRACT_BACK $subsky  -WRITE_XML Y  -XML_NAME ${outname}.xml   "
    # -CLIP_WRITELOG Y  -CLIP_LOGNAME ${outname}_clip.log
 
 # ATTN: lots of jobs aborted with  -COMBINE_BUFSIZE 16384!!  ok with 8192 (def)
@@ -158,16 +162,14 @@ if [ $dry == 'F' ]; then
 	if [ $nerr -ge 1 ]; then
 		ecn "ERROR: found Errors in logfile:"
 		grep Error $logfile
-		ecn "ERROR: check results in $workdir"
+		ec "ERROR: check results in $workdir"
 		errcode=4
 	else
 		ec "# swarp run successful "
-		ec "# $(tail -1 $logfile) "
-		ec "# mv products back to $WRK "
-		#mv substack*.fits $datadir
-        ec "# Clean up ... delete $workdir"; rm -rf $workdir
+		ec "# $(tail -1 $logfile) "  # line showing "Add done" and exec time 
+        ec "# Clean up ... delete $workdir"
+		rm -rf $workdir
 	fi
-	mv ${outname}*.*  $datadir
     #-----------------------------------------------------------------------------
     # and finish up
     #-----------------------------------------------------------------------------

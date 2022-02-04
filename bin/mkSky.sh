@@ -83,7 +83,7 @@ if [ ! -s $datadir/$list ]; then echo "ERROR: $list not found in $WRK/images ...
 ec "## Working on $(hostname); data on $rhost; work dir is $workdir"
 
 mycd $datadir
-nl=$(cat $list | wc -l)
+nl=$(cat $datadir/$list | wc -l)
 skylist=${list%.lst}.skylst
 
 echo "=================================================================="
@@ -117,13 +117,15 @@ ec "% $comm "
 ec ""
 
 ###  check available space - see pswarp_multi.sh for example
-###  hopefully not needed when using bigscraatch nodes
+###  hopefully not needed when using bigscratch nodes
 
 ec "## Link the needed data and config files... "
 cp $datadir/$list $datadir/$skylist .
-ln -s $datadir/zeroes.fits .
-cp $confdir/bgsub.param $confdir/swarp.conf .
-cp $confdir/bgsub.conf $confdir/gauss_3.0_7x7.conv .
+ln -s /n08data/UltraVista/DR5/bpms/bpm_comb_20190420.fits zeros.fits
+ln -s $confdir/swarp238.conf ./swarp.conf
+cp $confdir/bgsub.param $confdir/bgsub.conf $confdir/gauss_3.0_7x7.conv .
+#cp $confdir/bgsub.param $confdir/swarp.conf .
+#cp $confdir/bgsub.conf $confdir/gauss_3.0_7x7.conv .
 
 for f in $(cat $skylist); do 
 	r=${f%.fits}
@@ -160,13 +162,13 @@ else
 	strings  $logfile.err > x ; mv x $logfile.err   # to remove blank lines
 
 	# check products
-	nima=$(cat mkSky_??.lst | wc -l)
+	nima=$(cat $list | wc -l)
 	nski=$(grep skip\  $logfile.log | wc -l)
 	echo "# Skipped $nski files with too few nearby skies"
 	
 	nsky=$(ls v20*_sky.fits 2> /dev/null | wc -l)  
 	nexp=$(($nima - $nski))
-	if [ $nsky -ne $nexp ]; then 
+	if [ $nsky -ne $nexp ]; then     ### PROBLEM   
 		echo "PROBLEM: found only $nsky files of $nima expected - check logs"
 		echo "PROBLEM: mv products back to images/; keep workdir $workdir"
 		edate=$(date "+%s"); dt=$(($edate - $sdate))
@@ -174,12 +176,13 @@ else
 		echo "------------------------------------------------------------------"
 		errcode=2
 #		mv  mkSky_??.log mkSky_??.err  $datadir/
-	else
+	else                             ### SUCCESS
 		echo " >> Found $nsky _sky files - move them back to images/ and clean up"
 	    # mv products back to images/
 		mv v20*_*_sky.fits  $logfile.log  $logfile.err  $datadir/ 
 		rm v20*_0????.fits v20*_weight.fits v20*_mask.fits      # the links
 		rm -f missfits.xml bgsub.xml *.con? *.param zeroes.fits    # other stuff
+		errcode=0
 	fi
 fi
 

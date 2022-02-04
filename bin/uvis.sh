@@ -1,3 +1,4 @@
+
 #!/bin/bash 
 #-----------------------------------------------------------------------------
 # File: uvis.sh 
@@ -1605,7 +1606,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         # Don't need links to withSky images here (images/): mkSky work is done in 
         # subdirs and needed links are created there. 
             
-        nexp=299
+        nexp=400
         #ec "# split into chunks of max $nexp images, normally doable in 32 hrs"
         nts=$(echo "$nimages / $nexp + 1" | bc)
 
@@ -1775,7 +1776,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         fi
         
         # remove old files if any
-        rm -f qall estats updateWeights_??.out  updateWeights_??.sh
+        rm -f qall estats updateWeights_??.out  updateWeights_??.lst  updateWeights_??.sh
         # build links to sky, weight and mask files
         ln -sf mkSky/v20*_sky.fits .
         ln -sf Masks/v20*_mask.fits .
@@ -1818,7 +1819,8 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
             ec "PROBLEM: some updateWeights's exit status not 0 ... "
             grep -v \ 0  estats;    askuser
         else
-            ec "CHECK: updateWeights.sh exit status ok ... continue"; rm -f qall
+            ec "CHECK: updateWeights.sh exit status ok ... continue"
+			rm -f estats qall
         fi
         
         # join the logfiles - contains number of new pixels masked for each frame
@@ -1829,8 +1831,10 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         if [ ! -d updateWeights ]; then mkdir updateWeights; fi
         mv updateWeights_??.* updateWeights
 
-        # rm all links to images, weights, etc
-        rm v20*_0????.fits v20*_weight.fits v20*_sky.fits
+        # rm all links to images, weights, etc ... separately to avoid arg list too long
+        rm v20*_0????.fits 
+		rm v20*_weight.fits 
+		rm v20*_sky.fits
 		rm v20*_mask.fits zeroes.fits # v20*.head
 
         if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
@@ -1842,7 +1846,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         ec "#-----------------------------------------------------------------------------"      
         ec "# $pcurr finished; ==> auto continue to $pnext"
         ec "#-----------------------------------------------------------------------------"      
-        $0 $pnext $pauto 
+        $0 $pnext $pauto $dry
     else 
         ec "#-----------------------------------------------------------------------------"
         ec "#                                End of $pcurr "
@@ -1860,7 +1864,7 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
     nimages=$(cat list_images | wc -l)
 
     ec "CHECK: found list_images with $nimages entries"
-    
+
     # ----------------------  Finished checking  ----------------------
 
     #----------------------------------------------------------------------------------------#
@@ -1915,7 +1919,7 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
         fi
 
         ec "# ==> Build processing scripts for $nimages files from $list:"
-        rate=30         # typical num images processed / hr
+        rate=50         # typical num images processed / hr
         nexp=$((2*$rate/3 * 18)) # number expected per process in 32 hrs
         nts=$(echo "$nimages / $nexp + 1" | bc) ##;     echo "$nimages $nexp $nts"
 
@@ -2012,7 +2016,7 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
         if [ ! -d cleaned ]; then mkdir cleaned; fi
         if [ ! -d dirty ]; then mkdir dirty; fi
         mv v20*_clean.fits subSky_??.* cleaned            # and other subSky files
-        mv v20*_bgcln.fits v20*_sub.fits dirty            # and other subSky files
+        #mv v20*_bgcln.fits v20*_sub.fits dirty            # and other subSky files
         # leave subSky.log to check if done
         ec "CHECK: subSky.sh done, clean images moved to cleaned/ and linked ... continue"
         ec "#-----------------------------------------------------------------------------"
@@ -2094,17 +2098,20 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
         nout=$(ls -1 pswarp2_paw?_??.out 2> /dev/null | wc -l)
         nlog=$(ls -1 pswarp2_paw?_??.log 2> /dev/null | wc -l)
         if [ $nout -ge 1 ] || [ $nlog -ge 1 ]; then
-            ec "#### ATTN: found $nout pswarp2_??.out and $nlog pswarp2_??.log files ... delete them and continue??"
+            ec "#### ATTN: found $nout pswarp2_paw?_??.out and $nlog pswarp2_paw?_??.log files ... delete them and continue??"
             askuser
         fi
 		
-		if [ $(ls pswarp2_paw?_??.out 2> /dev/null | wc -l) -ne 0 ]; then
-			ec "CHECK: Found some pswarp2 .out files ... clean up first?"
-			askuser
-		else
-			rm -f qall estats pswarp2_paw?_??.lst  pswarp2_paw?_??.sh     # just in case
-			rm -f pswarp2_paw?_??.out  pswarp2_paw?_??.log  
-        fi
+		rm -f qall estats pswarp2_paw?_??.lst  pswarp2_paw?_??.sh     # just in case
+		rm -f pswarp2_paw?_??.out  pswarp2_paw?_??.log  
+
+#		if [ $(ls pswarp2_paw?_??.out 2> /dev/null | wc -l) -ne 0 ]; then
+#			ec "CHECK: Found some pswarp2 .out files ... clean up first?"
+#			askuser
+#		else
+#			rm -f qall estats pswarp2_paw?_??.lst  pswarp2_paw?_??.sh     # just in case
+#			rm -f pswarp2_paw?_??.out  pswarp2_paw?_??.log  
+#       fi
 
         # if no p2 stack, then do one at low res, 
         if [[ $stout =~ "lr" ]]; then
@@ -2124,8 +2131,8 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
         ec "#-----------------------------------------------------------------------------"
 
         nim=450  # approx num of images in each sublist; require 10GB of mem each
-        nim=900  # approx num of images in each sublist; require 11GB of mem each
-        nim=2000  # approx num of images in each sublist; require 11GB of mem each
+        #nim=900  # approx num of images in each sublist; require 11GB of mem each
+        #nim=2900  # approx num of images in each sublist; require 11GB of mem each
         for list in list_paw[0-9]; do  
             nl=$(cat $list | wc -l)
             ppaw=$(echo $list | cut -d\_ -f2)       # NEW tmporary name for full paw
@@ -2134,7 +2141,7 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
                 nl=$(cat $slist | wc -l)    
                 paw=$(echo $slist | cut -d\_ -f2-3 | cut -d\. -f1)   
                 outname=substack_${paw}
-				if [ $nl -lt 55 ]; then ppn=22; else ppn=23; fi
+				if [ $nl -lt 55 ]; then ppn=12; else ppn=18; fi
                 #ec "DEBUG:  For paw $paw, $nl images ==> $outname with subsky $subsky"
             
                 # ---------------------- Local run by sublist ----------------------
@@ -2149,8 +2156,10 @@ elif [ $1 = 'p4' ]; then      # P4: subsky, destripe and bild final stack
                 echo "qsub $qfile; sleep 1" >> qall
             done
         done 
+        ec "#-----------------------------------------------------------------------------"
         njobs=$(cat qall | wc -l)
         ec "# ==> written to file 'qall' with $njobs entries "
+		ec "# ==> torque params: $(grep ppn= $qfile | cut -d\  -f3)"
         ec "#-----------------------------------------------------------------------------"
         if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
 

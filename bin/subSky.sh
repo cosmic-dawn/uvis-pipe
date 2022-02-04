@@ -3,7 +3,7 @@
 #PBS -N subSky_@FILTER@_@ID@
 #PBS -o @IDENT@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=9,walltime=40:00:00
+#PBS -l nodes=1:ppn=9,walltime=48:00:00
 #-----------------------------------------------------------------------------
 # module: subSky wrapper for subSky.py
 # requires: intelpython, astropy.io.fits, uvis scripts and libs
@@ -87,7 +87,7 @@ case $FILTER in
 	Q | R | P      ) delta=40 ;;   # the test filters
 esac   
 		
-nl=$(cat $list | wc -l)
+nl=$(cat $datadir/$list | wc -l)
 
 # run these in a separate subdir to avoid problems with parallel runs
 if [ -d $workdir ]; then rm -rf $workdir/*; fi
@@ -121,7 +121,7 @@ for f in $(cat $list); do
 	ln -s $datadir/Masks/${r}_mask.fits .
 done
 
-cp $confdir/bgsub.param $confdir/swarp.conf .
+cp $confdir/bgsub.param $confdir/swarp238.conf .
 cp $confdir/bgsub.conf $confdir/gauss_3.0_7x7.conv .
 
 logfile=$(echo $list | cut -d\. -f1).log

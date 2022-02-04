@@ -48,28 +48,40 @@ xshift   = fields.array["DX"].data*3600.
 yshift   = fields.array["DY"].data*3600.
 zpcorr   = fields.array["ZeroPoint_Corr"].data
 
-#shift    = (xshift**2+yshift**2)**0.5              # total shift
+shift    = (xshift**2+yshift**2)**0.5              # total shift
 
 # Build .dat file
 f = open(dat,'w')
-f.write("# From table Fields of %s\n"%xml)
-f.write("# col 1. root name\n")
-f.write("# col 2. XY-contrast\n")
-f.write("# col 3. ZP-corr     [mag]\n")
-f.write("# col 4. chi2-int\n")
-f.write("# col 5. chi2-ref\n")
-f.write("# col 6. x-shift     [arcsec]\n")
-f.write("# col 7. y-shift     [arcsec]\n")
-f.write("#-------------------------------------------\n")
+#f.write("# From table Fields of %s\n"%xml)
+#f.write("# col 1. root name\n")
+#f.write("# col 2. XY-contrast\n")
+#f.write("# col 3. ZP-corr     [mag]\n")
+#f.write("# col 4. chi2-int\n")
+#f.write("# col 5. chi2-ref\n")
+#f.write("# col 6. x-shift     [arcsec]\n")
+#f.write("# col 7. y-shift     [arcsec]\n")
+f.write("# File            contrast    ZPcorr chi2-int   chi2-ref  x-shift y-shift    shift\n")
+#        v20151219_00293     45.820     0.005     9.16      23.07    6.515  -5.863    8.765 
+#f.write("#-------------------------------------------\n")
 
 for n in range(len(name)):
     ff = name[n].split('.')[0]    # file root name
-    f.write("%-18s %7.3f %7.3f %8.2f %10.2f  %7.3f %7.3f \n"%(ff, contrast[n],zpcorr[n], chi2int[n],chi2ref[n], xshift[n],yshift[n]) )
+    f.write("%-18s %7.3f %9.3f %8.3f %10.3f  %8.3f %8.3f  %8.3f \n"%(ff, contrast[n],zpcorr[n], chi2int[n],chi2ref[n], xshift[n],yshift[n], shift[n]) )
 
-f.write("#-------------------------------------------\n")
+#f.write("#-------------------------------------------\n")
 f.close()
 
-# list of files with low contrast
+# files with low contrast
 lc = contrast < 2
 nlc = name[lc]
-print("Nun files with low contrast: {:} of {:}".format(len(nlc),len(name)))
+print("Num files with low contrast: {:4n} of {:}".format(len(nlc),len(name)))
+
+# files with shift > 15
+lc = shift > 15
+nlc = name[lc]
+print("Num files with shift > 15:   {:4n} of {:}".format(len(nlc),len(name)))
+
+# files with large or small |ZP corr| > 150 
+lc = abs(zpcorr) > 150
+nlc = name[lc]
+print("Num files large ZP corr:     {:4n} of {:}".format(len(nlc),len(name)))

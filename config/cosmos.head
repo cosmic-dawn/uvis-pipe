@@ -1,48 +1,20 @@
-====> file UVISTA_H_DR3a_pass2.fits (main) <====
-SIMPLE  =                    T / This is a FITS file
-BITPIX  =                  -32 /
+COMMENT   global head file for COSMOS data
 NAXIS   =                    2 /
 NAXIS1  =                48096 / Number of pixels along this axis
 NAXIS2  =                48096 / Number of pixels along this axis
-EXTEND  =                    T / This file may contain FITS extensions
 EQUINOX =        2000.00000000 / Mean equinox
-MJD-OBS =   5.522000000000E+04 / Modified Julian date at start
 RADECSYS= 'ICRS    '           / Astrometric system
 CTYPE1  = 'RA---TAN'           / WCS projection type for this axis
-CUNIT1  = 'deg     '           / Axis unit
-CRVAL1  =   1.501163213000E+02 / World coordinate on this axis
-CRPIX1  =   2.271550000000E+04 / Reference pixel on this axis
-CD1_1   =  -4.166666800000E-05 / Linear projection matrix
-CD1_2   =   0.000000000000E+00 / Linear projection matrix
 CTYPE2  = 'DEC--TAN'           / WCS projection type for this axis
+CUNIT1  = 'deg     '           / Axis unit
 CUNIT2  = 'deg     '           / Axis unit
-CRVAL2  =   2.200973097000E+00 / World coordinate on this axis
-CRPIX2  =   2.184100000000E+04 / Reference pixel on this axis
-CD2_1   =   0.000000000000E+00 / Linear projection matrix
-CD2_2   =   4.166666800000E-05 / Linear projection matrix
-EXPTIME =   2.240000000000E+02 / Maximum equivalent exposure time (s)
-GAIN    =   0.000000000000E+00 / Maximum equivalent gain (e-/ADU)
-SATURATE=   2.939496960061E+04 / Saturation Level (ADU)
-COMMENT
-SOFTNAME= 'SWarp   '           / The software that processed those data
-SOFTVERS= '2.36.1  '           / Version of the software
-SOFTDATE= '2014-06-30'         / Release date of the software
-SOFTAUTH= '2010-2012 IAP/CNRS/UPMC' / Maintainer of the software
-SOFTINST= 'IAP  http://www.iap.fr' / Institute
-COMMENT
-AUTHOR  = 'bouflous'           / Who ran the software
-ORIGIN  = 'fcix11  '           / Where it was done
-DATE    = '2015-05-02T17:24:43' / When it was started (GMT)
-COMBINET= 'WEIGHTED'           / COMBINE_TYPE config parameter for SWarp
-COMMENT
-COMMENT  Propagated FITS keywords
+CRVAL1  =          150.1163213 / World coordinate on this axis
+CRVAL2  =          2.200973097 / World coordinate on this axis
+CRPIX1  =              22715.5 / Reference pixel on this axis
+CRPIX2  =              21841.0 / Reference pixel on this axis
+CD1_1   =      -0.000041666668 / Linear projection matrix
+CD1_2   =                 0.00 / Linear projection matrix
+CD2_1   =                 0.00 / Linear projection matrix
+CD2_2   =       0.000041666668 / Linear projection matrix
 OBJECT  = 'COSMOS  '           / Object Name
-COMMENT
-COMMENT  Axis-dependent config parameters
-RESAMPT1= 'LANCZOS3'           / RESAMPLING_TYPE config parameter
-CENTERT1= 'ALL     '           / CENTER_TYPE config parameter
-PSCALET1= 'MEDIAN  '           / PIXELSCALE_TYPE config parameter
-RESAMPT2= 'LANCZOS3'           / RESAMPLING_TYPE config parameter
-CENTERT2= 'ALL     '           / CENTER_TYPE config parameter
-PSCALET2= 'MEDIAN  '           / PIXELSCALE_TYPE config parameter
 END

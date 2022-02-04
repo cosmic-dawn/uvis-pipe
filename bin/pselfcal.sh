@@ -1,20 +1,13 @@
 #!/bin/bash 
-#PBS -S /bin/sh
-#PBS -N pscamp_@PTAG@_@FILTER@
-#PBS -o @IDENT@.out
-#PBS -j oe
-#PBS -l nodes=1:ppn=22,walltime=@WTIME@:00:00
 #-----------------------------------------------------------------------------
-# pscamp: run scamp on a list of ldacs
-# requires: astromatic suite, ... intelpython, astropy.io.fits, uvis scripts and libs
+# Run SExtractor and scamp on paw stacks
+# - adapted from psacmp.sh and qFits.sh
+# - requires: astromatic suite, intelpython, astropy.io.fits, etc.
 #-----------------------------------------------------------------------------
 set -u 
 export PATH="/softs/astromatic/bin:$PATH"  #echo $PATH
 export PYTHONPATH="/home/moneti/uvis/python:/home/moneti/uvis/python_lib" 
 
-#-----------------------------------------------------------------------------
-# this is for Henry's scamp with 
-#-----------------------------------------------------------------------------
 module() { eval $(/usr/bin/modulecmd bash $*); }
 module purge ; module load inteloneapi/2021.1 intelpython/3-2019.4 cfitsio
 export LD_LIBRARY_PATH=/lib64:${LD_LIBRARY_PATH}
@@ -24,100 +17,91 @@ export LD_LIBRARY_PATH=/lib64:${LD_LIBRARY_PATH}
 #-----------------------------------------------------------------------------
 
 ec() { echo "$(date "+[%d.%h.%y %T"]) $1 "; }    # echo with date
-ec() { echo "[pscamp.sh]" $1; }    # echo with scamp
-dt() { echo "$(date "+%s.%N") $bdate" | awk '{printf "%0.2f\n", $1-$2}'; }
-wt() { echo "$(date "+%s.%N") $bdate" | awk '{printf "%0.2f hrs\n", ($1-$2)/3600}'; }  # wall time
 
 #-----------------------------------------------------------------------------
-# Some variables
+# Other settings and variables
 #-----------------------------------------------------------------------------
 
-module=pscamp_@PTAG@               # w/o .sh extension
+dry='F'
+if [[ "${@: -1}" == 'dry' ]];  then dry='T'; fi
+if [[ "${@: -1}" == 'test' ]]; then dry='T'; fi
+
+module=pselfcal                   # w/o .sh extension
 uvis=/home/moneti/softs/uvis-pipe # top UltraVista code dir
 bindir=$uvis/bin
 pydir=$uvis/python                # python scripts
 confdir=$uvis/config              # config dir
 scripts=$uvis/scripts             # other scripts dir (awk ...)
 
-# check  if run via shell or via qsub:
-ec "#-----------------------------------------------------------------------------"
-if [[ "$0" =~ "$module" ]]; then
-    ec "# $module: running as shell script on $(hostname)"
-#	if [[ "${@: -1}" =~ 'dry' ]] || [ "${@: -1}" == 'test' ]; then dry=T; else dry=F; fi
-	list=@LIST@
-	dry=@DRY@
-	WRK=@WRK@
-	ptag=@PTAG@
-	FILTER=$FILTER
-	verb=" -VERBOSE_TYPE LOG"
-	pipemode=0
-else
-    ec "# $module: running via qsub (from pipeline) on $(hostname)"
-	WRK=@WRK@
-	dry=@DRY@
-	ptag=@PTAG@
-	list=@LIST@
-	FILTER=@FILTER@
-	verb=" -VERBOSE_TYPE LOG" # QUIET"
-	pipemode=1
-fi
-
-ec "#-----------------------------------------------------------------------------"
-
 #-----------------------------------------------------------------------------------------------
-case  $FILTER in   # P,Q,R,T filters were test spaces in dr4
-   N | NB118 | P) magzero=29.14 ; FILTER=NB118 ;;
-   Y | Q        ) magzero=29.39 ;;
-   J | R        ) magzero=29.10 ;;
-   H | S        ) magzero=28.62 ;;
-   K | Ks | T   ) magzero=28.16 ; FILTER=Ks    ;;
+case  $FILTER in   # 
+   N | P ) magzero=29.14 ;;
+   Y | Q ) magzero=29.39 ;;
+   J | R ) magzero=29.10 ;;
+   H | S ) magzero=28.62 ;;
+   K | T ) magzero=28.16 ;;
    * ) ec "# ERROR: invalid filter $FILTER"; exit 3 ;;
 esac   
+
 #-----------------------------------------------------------------------------------------------
 
-#version="2.6.3"     # this version used in DR4
-#version="2.7.8"    
-#version="2.9.2"
-#version="2.9.3-altaz_fix"    # to test, from EB
-version="2.10.0"   # avec Gaia-EDR3, mais tjrs sans support des PMs
-
+version="2.10.0"   # avec Gaia-EDR3, mais tjrs sans support des Proper Motions
 myscamp="/softs/astromatic/scamp/${version}-gnu/bin/scamp" 
 
-#myscamp="/home/hjmcc/Downloads/scamp/src/scamp" ; version="2.10.0_hjmcc"  # v2.10.0 with new intel compiler (from Henry)
-#myscamp="/home/moneti/bin/scamp_2.9.3_morpho"   ; version="2.9.3_morpho"  ; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/softs/plplot/5.15.0/lib
+#-----------------------------------------------------------------------------------------------
+# some variables ... later to be set automatically ... maybe
+resol='lr'
 #-----------------------------------------------------------------------------------------------
 
-cd $WRK
+cd $WRK/images; echo "--> $PWD"            # temprary dir with paw substacks
 
-nldacs=$(cat $list | wc -l)
-for f in $(cut -d\. -f1  $list); do ls ${f}.ahead 2> /dev/null ; done > ${list}.aheads
-naheads=$(cat ${list}.aheads 2> /dev/null | wc -l)
-rm ${list}.aheads
+ls UVISTA-DR5_${FILTER}_paw?_${resol}.fits > pawlist
+list=pawlist
+npaws=$(cat $list | wc -l)
+ec "## Found $npaws paw stacks to treat "
+#echo "HERE"; exit
+#-----------------------------------------------------------------------------
+# 1. Run SExtractor on each image
+#-----------------------------------------------------------------------------
 
-sconf=scamp_dr5.conf   # new one for DR5
-logfile=$WRK/$module.log ; rm -f $logfile
+for f in $(cat $list); do
+	root=${f%.fits}
+	logfile=selfcal_se_${root:13:4}.log
+	if [ -e $logfile ]; then rm $logfile; fi
+	echo "Sextractor $f ==> $root.ldac > $logfile"
+	touch $root.ldac; touch $logfile
+done
+
+#-----------------------------------------------------------------------------
+# 1. Run scamp with production of merged catalog on ldacs
+#-----------------------------------------------------------------------------
+
+sconf=$confdir/scamp_dr5.conf   # new one for DR5
+logfile=selfcal_scamp.log 
+if [ -e $logfile ]; then rm -f $logfile; fi
+
+ptag=$FILTER
+verb="-VERBOSE_TYPE NORMAL"
 
 args=" -c $sconf  -MAGZERO_OUT $magzero  -ASTRINSTRU_KEY OBJECT "
 catal="-ASTREFCAT_NAME GAIA-EDR3_1000+0211_r61.cat"  # use a local reference catalogue
-ahead="-AHEADER_GLOBAL vista_gaia.ahead -MOSAIC_TYPE SAME_CRVAL"
-extra="-XML_NAME $module.xml"
+extra="-XML_NAME $module.xml -MOSAIC_TYPE SAME_CRVAL -MERGEDOUTCAT_TYPE ASCII -MERGEDOUTCAT_NAME"
 pname="-CHECKPLOT_NAME fgroups_${ptag},referr2d_${ptag},referr1d_${ptag},interr2d_${ptag},interr1d_${ptag},photerr_${ptag}"
 
 # build command line
-comm="$myscamp @$list  $args  $ahead  $catal  $extra $pname $verb"
+comm="$myscamp @$list  $args  $catal  $extra $pname $verb"
 
 
-ec "# Using $list with $nldacs files; and $naheads ahead files "
+#ec "# Using $list with $nldacs files; and $naheads ahead files "
 ec "# Filter is $FILTER; magzero = $magzero" 
 ec "# Using $myscamp  ==> $($myscamp -v)"
-ec "# PBS resources: $(head $WRK/$module.sh | grep nodes= | cut -d \  -f3)"
 ec "# Scamp config file is $sconf"
 ec "# logfile is $logfile"
 ec "# Command line is:"
 ec "    $comm"
 ec ""
 if [[ $dry == 'T' ]]; then
-	echo "[---DRY---] Working directory is $WRK"
+	echo "[---DRY---] Working directory is $WRK/images"
 	echo "[---DRY---] Input files are like $(tail -1 $list)"
     echo "[---DRY---] >>  Dry-run of $0 finished .... << "
 	ec "#-----------------------------------------------------------------------------"
