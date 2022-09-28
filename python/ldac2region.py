@@ -16,9 +16,10 @@ from saturation_sub import *
 
 ##-----------------------------------------------------------------------------
 
-print(">> found {:} files to process".format(len(sys.argv)-1))
-fmt_ok='fk5;circle (%f,%f,0.0007) #color=green, width=3'
-fmt_ko='fk5;circle (%f,%f,0.0007) #color=red, width=5'
+if len(sys.argv)-1 > 1:
+    print(">> found {:} files to process".format(len(sys.argv)-1))
+fmt_ok='fk5;circle (%f,%f,0.0006) #color=green, width=2'
+fmt_ko='fk5;circle (%f,%f,0.0009) #color=red, width=4'
 
 for n in range(1, len(sys.argv)):
     nam = sys.argv[n]   # ; print nam
@@ -55,6 +56,7 @@ for n in range(1, len(sys.argv)):
     np.savetxt("tmp2", np.transpose((ra[loc],de[loc])), delimiter=" ", fmt=fmt_ko)
     os.system("cat tmp1 tmp2 > {:} ".format(out))
     
-    print ">> Built %s"%out
+    if len(sys.argv)-1 > 1:
+        print ">> Built %s"%out
     os.system("rm tmp1 tmp2")
 #-----------------------------------------------------------------------------

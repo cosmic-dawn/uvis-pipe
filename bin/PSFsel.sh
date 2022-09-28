@@ -90,8 +90,8 @@ if [ $nerr -gt 0 ]; then ec "# Attn: found $nerr missing psfex.xml files; contin
 # ---------------------- find images with large psf ----------------------
 
 ec "# Look for images with too large (> 1 arcsec) or too elliptical (> 0.1) PSF ..."
-echo '#   file          FWHM (")  Ell' > badPSF.dat
-awk '/v20/{if ($2 > 1.0 || $3 > 0.1) printf "%-18s %5.2f  %5.3f\n", $1, $2, $3 }' $outfile >> badPSF.dat
+#echo '#   file          FWHM (")  Ell' > badPSF.dat
+awk '/v20/{if ($2 > 1.0 || $3 > 0.1) printf "%-18s %6.3f  %6.4f\n", $1, $2, $3 }' $outfile >> badPSF.dat
 nbad=$(grep v20 badPSF.dat | wc -l) 
 
 if [ $nbad -gt 0 ]; then 

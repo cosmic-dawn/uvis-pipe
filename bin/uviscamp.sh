@@ -87,6 +87,7 @@ Trash=zRejected         ; if [ ! -d $Trash ]; then mkdir $Trash; fi
 #-----------------------------------------------------------------------------
 
 do_hires=F    # to do or not hi-res stack
+imdir=${WRK}/images
 	
 #-----------------------------------------------------------------------------
 # Functions
@@ -111,32 +112,7 @@ mycd() {
     else echo "!! ERROR: $1 does not exit ... quitting"; exit 5; fi
 }
 
-imdir=${WRK}/images
-curfiles() {   # list avaliable files for each frame
-    if [ -d $WRK/images ]; then 
-        nimages=$(ls -1 $WRK/images/v20*_0????.fits 2> /dev/null | wc -l) #;  echo $nimages
-        if [ $nimages -eq 0 ]; then
-            echo " ---------- Dirs still empty ---------- "
-        else
-            froot=$(cd $WRK ; ls images/v20*_0????.fits | head -$(($nimages / 2)) | tail -1 | cut -d\. -f1 | cut -d\/ -f2 )
-            echo "#-------------------------------------------------------------------------------------------- "
-            echo "# Found $nimages files like $froot in $PWD: " 
-            echo "#-------------------------------------------------------------------------------------------- "
-            \ls -Flhd $WRK/images/${froot}*.*   | cut -c27-399 | awk '{printf "#  "$0"\n"}' | sed 's|'$WRK/images'/||g'
-            echo "#-------------------------------------------------------------------------------------------- "
-            echo "# link references to files above " 
-            echo "#-------------------------------------------------------------------------------------------- "
-            \ls -FlhdL $WRK/images/${froot}*.*  | cut -c27-399 | awk '{printf "#  "$0"\n"}' | sed 's|'$WRK/images'/||g'
-            echo "#-------------------------------------------------------------------------------------------- "
-            echo "# Other files found in $PWD/subdirs: " 
-            echo "#-------------------------------------------------------------------------------------------- "
-            \ls -Flhd $WRK/images/*/${froot}*.* | cut -c27-399 | awk '{printf "#  "$0"\n"}' | sed 's|'$WRK/images'/||g'
-            echo "#-------------------------------------------------------------------------------------------- "
-        fi
-    else 
-        echo "----------  images dir not found; processing space not setup ---------- "
-    fi  
-}
+#imdir=${WRK}/images
 
 askuser() {   # ask user if ok to continue
     echo -n " ==> Is this ok? (yes/no):  "  >> $pipelog
@@ -149,37 +125,14 @@ askuser() {   # ask user if ok to continue
     done  
 }
 
-procenv() {   # Print some parameters for user to check
-    echo "#-----------------------------------------------------------------------------"
-    echo "# Processing environment: "
-    echo "  - Release area is   "$(ls -d $DR5)
-    echo "  - Working area is   "$(ls -d $WRK)" for Filter is "$FILTER
-    echo "  - shell scripts in  "$(ls -d $bindir)
-    echo "  - python scripts in "$(ls -d $pydir)
-    echo "  - config files in   "$(ls -d $confdir)
-    echo "  - pipe logfile is   "$(ls $pipelog)
-    echo "  - Release tag is    "$REL
-    echo "  - Found images directory with "$nimages" image files"
-    echo "#-----------------------------------------------------------------------------"  
-}
-
 erract() { # what to do in case of error
     echo ""
     ec "!!! PROBLEM "; tail $logfile
     exit 5
 }
 
-pipehelp() {
-    egrep -n '^elif' $0  | tr -s ' ' | grep -v ' : ' > t1
-    egrep -n '## - R' $0 | tr -s ' ' | grep -v egrep > t2
-    egrep -n '^#@@' $0   | tr -d '@' > t3  
-    cat t1 t2 t3 | sort -nk1,1 | tr -s '#' | cut -d \# -f2 | tr -d \"
-    rm t1 t2 t3
-}
 #-----------------------------------------------------------------------------
 # Misc. checks
-#-----------------------------------------------------------------------------
-
 #-----------------------------------------------------------------------------
 # check / set params
 #-----------------------------------------------------------------------------
@@ -795,58 +748,6 @@ elif [ $1 = 'p2' ]; then      # P2: scamp, swarp, build stack and its mask, buil
 		ec "#-----------------------------------------------------------------------------#"
 		exit 0
     fi
-
-
-#-----------------------------------------------------------------------------------------------
-
-#@@ ------------------------------------------------------------------------------------
-#@@  And options for status checking
-#@@ ------------------------------------------------------------------------------------
-
-elif [[ $1 =~ 'env' ]]; then   # env: check environment
-   procenv
-
-elif [[ $1 =~ 'fil' ]]; then   # files: list files for an image in current work space
-   curfiles
-
-elif [[ $1 == 'help' ]] || [[ $1 == '-h'  ]] ; then  # help, -h: list pipeline options
-    pipehelp
-
-elif [ $1 = 'plists' ]; then  # plists: rebuild paw lists and check
-
-    mycd $WRK/images
-    ec " >> Rebuild list_images and list_paw? ..."
-    \ls -1 v20*_00???.fits > list_images    
-    
-    file=$(mktemp)
-    paws=" paw1 paw2 paw3 paw4 paw5 paw6 COSMOS"
-    for i in v20*_00???.fits; do grep $i ../FileInfo.dat >> $file; done
-    for p in $paws; do grep $p $file | cut -d \   -f1 > list_${p}; done
-    rm $file
-
-    # if present, convert to paw0
-    if [ -e list_COSMOS ]; then mv list_COSMOS list_paw0; fi
-
-    for f in list_paw?; do if [ ! -s $f ]; then rm $f; fi; done
-    wc -l list_images ; wc -l list_paw?
-
-    # check that filename of a random file are links and if so remove them first:
-    root=$(tail -9 list_images | head -1 | cut -d\. -f1)
-    if [ -h ${root}.head ] && [ -h ${root}_weight.fits ]; then 
-        ec " >> Delete links to weight and head files ..."
-        rm v20*_00???.head v20*_00???_weight.fits
-        ec " >> Rebuild links for available images only ..."
-        for f in v20*_00???.fits; do 
-            ln -s scamp/${f%.fits}.head .
-            ln -s weights/${f%.fits}_weight.fits .
-        done
-    else
-        ec "#### ATTN: Files are not links as expected ..."
-        askuser
-    fi
-
-
-  ## ec "##-----------------------------------------------------------------------------"
 
 #-----------------------------------------------------------------------------------------------
 else

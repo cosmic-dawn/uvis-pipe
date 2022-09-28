@@ -1,6 +1,6 @@
 #!/bin/sh
 #PBS -S /bin/sh
-#PBS -N merge_@FILTER@
+#PBS -N merge_@FILTER@_@TAG@
 #PBS -o @IDENT@.out
 #PBS -j oe 
 #PBS -l nodes=1:ppn=6,walltime=08:00:00
@@ -39,7 +39,7 @@ errcode=0
 # check  if run via shell or via qsub: 
 if [[ "$0" =~ "$module" ]]; then
     echo "$module: running as shell script "
-    list=pmerge.lst
+    list=$1
     WRK=$WRK
     FILTER=$FILTER
     if [[ "${@: -1}" == 'dry' ]]; then dry='T'; else dry='F'; fi
@@ -68,24 +68,21 @@ cd $WRK/images
 if [ $? -ne 0 ]; then echo "ERROR: $WRK/images not found ... quitting"; exit 5; fi
 if [ ! -s $list ]; then echo "ERROR: $list not found in $WRK/images ... quitting"; exit 5; fi
 
+# output file names:
 stout=$stout.fits
 wtout=${stout%.fits}_weight.fits
-# if 
-if [ ${list:7:3} = 'paw' ]; then
-	suff=${list:7:4}
-else
-	suff="full"
-fi
 
+# Build command line:
+suff=$(echo ${list%.lst} | cut -d\_ -f2 )
 logfile=$WRK/images/pmerge_$suff.log
 
 # Command to produce the stack and its weight ...
 args=" -c $confdir/swarp238.conf  -WEIGHT_SUFFIX _weight.fits -WEIGHT_TYPE MAP_WEIGHT  \
        -IMAGEOUT_NAME $stout  -WEIGHTOUT_NAME $wtout \
        -COMBINE_TYPE WEIGHTED  -RESAMPLE N  -DELETE_TMPFILES N  \
-       -SUBTRACT_BACK N  -WRITE_XML Y  -XML_NAME pmerge.xml "
-ec "# stack: $stout"
-ec "# args:  $args"
+       -SUBTRACT_BACK N  -WRITE_XML Y  -XML_NAME pmerge_$suff.xml "
+#ec "# Output stack: $stout"
+#ec "# Command args:  $args"
 
 comm="swarp @$list $args $verb"
 
@@ -94,14 +91,16 @@ ec "#------------------------------------------------------------------" | tee $
 ec " >>>>  Merge $(cat $list | wc -l) substacks from $list  <<<<"        | tee -a $logfile 
 ec "#------------------------------------------------------------------" | tee -a $logfile 
 
-ec "% $comm " 
+echo "% $comm " >> $logfile
 if [ $dry == 'F' ]; then 
-	$comm >> $logfile 2>&1; ec ""
+	$comm >> $logfile 2>&1
 else
-	echo $comm ; ec ""
+	echo $comm 
 fi
 
-# For pass 1, build mask file; Command is mask_for_stack.py ...
+#-----------------------------------------------------------------------------
+# For pass 1, also build mask file; Command is mask_for_stack.py ...
+#-----------------------------------------------------------------------------
 if [ $pass -eq 1 ]; then
     ec "#------------------------------------------------------------------" | tee -a $logfile 
     ec " >>>>  Build mask etc. for $stout  <<<<"                             | tee -a $logfile 
@@ -123,12 +122,12 @@ if [ $pass -eq 1 ]; then
     comm="python $pydir/mask_for_stack.py -I $stout -W $wtout $args "
     ec "% $comm "  | tee -a $logfile  ; ec ""
     if [ $dry == 'F' ]; then 
-		$comm >> $logfile 2>&1 ; ec ""
+		$comm >> $logfile 2>&1 
 	fi
 fi
 
 edate=$(date "+%s"); dt=$(($edate - $sdate))
-echo "------------------------------------------------------------------"
-echo " >>>> pmerge finished - walltime: $dt sec  <<<<"
-echo "------------------------------------------------------------------"
+ec "#------------------------------------------------------------------" | tee -a $logfile 
+ec " >>>> pmerge finished - walltime: $dt sec  <<<<"                     | tee -a $logfile 
+ec "#------------------------------------------------------------------" | tee -a $logfile 
 exit $errcode

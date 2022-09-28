@@ -8,7 +8,6 @@
 import sys, re, os
 import numpy as np
 from time import ctime
-#from subsky_sub import *
 from ASCII_cat import *
 import astropy.io.fits as pyfits
 from optparse import OptionParser
@@ -73,6 +72,7 @@ if opts.extendedobj:
 
 sextract(opts.image, sexconf, cparam_sex)
 
+sys.exit()
 #-----------------------------------------------------------------------------
 
 print "## then build a flag file (python):"
@@ -81,6 +81,25 @@ print " - in the -OBJECT check image, set non-zero values(sky) to 1"
 
 out = pyfits.open(flag, mode='update')
 data = out[0].data
+flat = data.flatten()
+nz = flat.nonzero()
+print '# some info on the -OBJECTS image:'
+print '- mean   ', np.mean(flat)
+print '- median ', np.median(flat)
+print '- stdev  ', np.std(flat)
+print '- mean(nonzero):   ', np.mean(nz)
+print '- median(nonzero): ', np.median(nz)
+print '- stdev(nonzero):  ', np.std(nz)
+
+# Histogram
+
+#fig, ax = plt.subplots(2,1, figsize=(20, 20))
+#hist,bins,pat = ax[0].hist(nz, range=(-100,50), bins=150, log=True)
+#ax[1].imshow(core, vmin=-3, vmax=3, origin='lower', cmap='gist_heat')
+
+
+
+# Now convert to mask (or flag)
 data[data.nonzero()] = 1                          # set non-zero values to 1 (sky)
 
 print " - Set to 0 other pixels with abnormal values:"  #%(opts.thresh)
@@ -103,6 +122,9 @@ out[0].header['history'] = "Percent valid pixels: %0.2f"%(vf)
 
 out.close(output_verify='silentfix+ignore')
 ima.close()
+
+
+
 
 print "## Done ... outflag is: %s"% flag
 

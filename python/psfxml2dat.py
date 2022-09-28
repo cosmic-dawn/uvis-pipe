@@ -22,7 +22,8 @@ except:
 ## print(opts.inlist, opts.outtab)
 # Open output table and print header
 w = open(opts.outtab,'w')
-w.write("# Name              FWHM   Ell   PixSc\n")
+#w.write("# Name              FWHM   Ell   PixSc\n")
+#w.write("# Name              FWHM   Elli\n")
 
 # loop over xml files and write data to outpu table
 inlist = open(opts.inlist, 'r')
@@ -42,7 +43,7 @@ for f in inlist:
 
     for n in range(len(name)):
         ff = name[n].split('_')[:2]    # file root name
-        w.write("{:18s}{:6.2f} {:6.3f} {:6.3f}  \n".format(ff[0]+"_"+ff[1], fwhm[n], elli[n], scal[n]) )
+        w.write("{:18s}{:7.3f} {:7.4f}  \n".format(ff[0]+"_"+ff[1], fwhm[n], elli[n]) )
 
 w.close()
 

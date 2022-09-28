@@ -60,8 +60,8 @@ f = open(dat,'w')
 #f.write("# col 5. chi2-ref\n")
 #f.write("# col 6. x-shift     [arcsec]\n")
 #f.write("# col 7. y-shift     [arcsec]\n")
-f.write("# File            contrast    ZPcorr chi2-int   chi2-ref  x-shift y-shift    shift\n")
-#        v20151219_00293     45.820     0.005     9.16      23.07    6.515  -5.863    8.765 
+f.write("# File            contrast    ZPcorr chi2-int   chi2-ref   x-shift  y-shift     shift\n")
+#        v20091222_00368     18.127     0.017  181.391    355.456    -1.468    6.683     6.843 
 #f.write("#-------------------------------------------\n")
 
 for n in range(len(name)):

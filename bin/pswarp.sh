@@ -3,7 +3,7 @@
 #PBS -N sw_@FILTER@_@PAW@
 #PBS -o @IDENT@_@PAW@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=@PPN@,walltime=48:00:00
+#PBS -l nodes=1:ppn=@PPN@:bigscratch,walltime=48:00:00
 #-----------------------------------------------------------------------------
 # pswarp:  pswarp script
 # requires: astropy.io.fits, uvis scripts and libs
@@ -158,6 +158,8 @@ ecn "   "; ls -lh ${imroot%.fits}_weight.fits | tr -s ' ' | cut -d' ' -f9-11
 
 if [ $dry == 'F' ]; then
 	$comm >> $logfile 2>&1
+	if [ $? -ne 0 ]; then ec "Execution ERROR ... "; errcode=2; fi
+
 	nerr=$(grep Error $logfile | wc -l)
 	if [ $nerr -ge 1 ]; then
 		ecn "ERROR: found Errors in logfile:"
@@ -165,7 +167,7 @@ if [ $dry == 'F' ]; then
 		ec "ERROR: check results in $workdir"
 		errcode=4
 	else
-		ec "# swarp run successful "
+		ec "# swarp run successful, see $(ls -lh ${outfile}.fits | cut -d\  -f5-9) "
 		ec "# $(tail -1 $logfile) "  # line showing "Add done" and exec time 
         ec "# Clean up ... delete $workdir"
 		rm -rf $workdir
