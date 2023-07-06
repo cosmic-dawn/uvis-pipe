@@ -3,7 +3,7 @@
 #PBS -N subSky_@FILTER@_@ID@
 #PBS -o @IDENT@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=9,walltime=48:00:00
+#PBS -l nodes=1:ppn=5,walltime=18:00:00
 #-----------------------------------------------------------------------------
 # module: subSky wrapper for subSky.py
 # requires: intelpython, astropy.io.fits, uvis scripts and libs
@@ -165,22 +165,17 @@ else
     $comm | grep -v ^$ > $logfile 2>&1    # removing blank lines
 
 	# check products: num files and file size
-	ls -l v20*_clean.fits 2> /dev/null > done.lst
+	# in DR6: products moved already to filter dir, so check wrt logfile
+	grep Begin\ work $logfile > done.lst
 	nsub=$(cat done.lst | wc -l)
-	ninc=$(grep -v 257M done.lst | wc -l)
 	if [ $nsub -ne $nims ]; then
 		ec "!!! PROBLEM: found only $nsub _clean files of $nims expected"
 		errcode=4
-	elif [ $ninc -eq 0 ]; then
-		ec "!!! PROBLEM: found $ninc incomplete _clean files"
-		errcode=5
-
 	else
 		ec " >> Found $nsub _clean files - move them back to \$WRK/images/ and clean up"
-	    # mv products back to images/
-#		mv v20*_*_sub.fits v20*_*_bgcln.fits  $datadir       # keep intermediate products
-		rm v20*_*_sub.fits v20*_*_bgcln.fits                 # delete intermediate products
-		mv v20*_*_clean.fits  $logfile  $datadir             # final products
+		rsync -av v20*clean.fits $WRK/images/cleaned > mv.log
+		nm=$(grep clean.fits mv.log | wc -l)
+		ec " >> ... $nm _cln.fits files moved; ready to remove $workdir"
 	fi
 fi
 

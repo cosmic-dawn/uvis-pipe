@@ -9,34 +9,39 @@ import sys  #, re, os
 import numpy as np
 import astropy.io.fits as pyfits
 
-ima = sys.argv[1]
+fmt = " {:2n} {:8.2f}  {:8.2f}   {:8.2f}   {:8.0f} {:8.0f}   {:6.2f}"
+print(len(fmt), fmt.replace("{:2n}","  "))
+for n in range(1,len(sys.argv)):
+    ima = sys.argv[n]
+    
+    pima  = pyfits.open(ima)
+    n_ext = len(pima)     # num extensions
+    
+    if n_ext == 1:   # to handle SEF files
+        n_ext = 2
 
-# prepare
-pima  = pyfits.open(ima)
-n_ext = len(pima)     # num extensions
+    mmean = 0 ; mmedi = 0 ; mstd = 0 ; mmaxi = 0 ; mmini = 0 ; nzero = 0
+    print("File: {:}; {:} extenstions".format(ima,n_ext))
+    print("ext    mean      median    st.dev       min      max    %zeros")
+    thresh = 9500
+    for e in range(1, n_ext):
+        data = pima[e].data
 
-if n_ext == 1:   # to handle SEF files
-    n_ext = 2
+        loc = ((data > -thresh) & (data < thresh))
+        mean = np.mean(data[loc]); medi = np.median(data[loc])
+        mini = np.min(data[loc]); maxi = np.max(data[loc])
+        std  = np.std(data[loc])
 
-mmean = 0 ; mmedi = 0
-mmaxi = 0 ; mmini = 0
-nzero = 0
-print("File: "+ima)
-print("ext      mean    median         min       max      %zeros")
-for e in range(1, n_ext):
-    data = pima[e].data
-    loc = np.where(data == 0)[0]
-    mean = np.mean(data); medi = np.median(data)
-    mini = np.min(data); maxi = np.max(data)
-    nz = 100*len(loc)/2048/2048
-    print(" {:2d}  {:8.2f}  {:8.0f}   {:9.2f} {:9.2f}   {:9.2f}".format(e, mean, medi, mini, maxi, nz))
-    mmean += mean;  mmedi += medi
-    mmini = np.min([mini, mmini]);  mmaxi = np.max([mmaxi, maxi])
-    nzero += len(loc)
+        loc = np.where(data == 0)[0]
+        nz = 100*len(loc)/2048/2048
+        print(fmt.format(e, mean, medi, std, mini, maxi, nz))
+        mmean += mean ; mmedi += medi ; mstd += std
+        mmini = np.min([mini, mmini]);  mmaxi = np.max([mmaxi, maxi])
+        nzero += len(loc)
 
-print("net  {:8.2f}  {:8.0f}   {:9.2f} {:9.2f}   {:9.2f}".format(mmean/16, mmedi/16, mmini, mmaxi, 100*nzero/16/2048/2048))
-
-pima.close()
+    print(fmt.replace(" {:2n}","All").format(mmean/16, mmedi/16, mstd/16, mmini, mmaxi, nzero/16/2048/20.48))
+    
+    pima.close()
 #mm=np.array(mm)
 sys.exit()
 

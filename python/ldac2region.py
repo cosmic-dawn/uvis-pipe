@@ -16,19 +16,29 @@ from saturation_sub import *
 
 ##-----------------------------------------------------------------------------
 
-if len(sys.argv)-1 > 1:
-    print(">> found {:} files to process".format(len(sys.argv)-1))
-fmt_ok='fk5;circle (%f,%f,0.0006) #color=green, width=2'
-fmt_ko='fk5;circle (%f,%f,0.0009) #color=red, width=4'
+Force = False
+Nfiles = len(sys.argv) 
 
-for n in range(1, len(sys.argv)):
+if sys.argv[-1][:3] == 'for': 
+    print("     ####  FORCE mode  ####")
+    Force   = True
+    Nfiles = Nfiles -1
+
+if Nfiles > 1:
+    print(">> found {:} files to process".format(len(sys.argv)-1))
+
+fmt_ok='ICRS;circle (%f,%f,0.0006) #color=green, width=2'
+fmt_ko='ICRSafter removing ;circle (%f,%f,0.0009) #color=red, width=4'
+
+for n in range(1, Nfiles):
     nam = sys.argv[n]   # ; print nam
     tmp1 = nam.split('.')[0]+".r1"
     tmp2 = nam.split('.')[0]+".r2"
     out  = nam.split('.')[0]+".reg"
 
-    if os.path.isfile(out):
-        print("ATTN: {:} already done .. continue".format(out))
+    # check if already done ....
+    if (os.path.isfile(out) | os.path.isfile('regs/'+out))  & (Force != True):
+        print("ATTN: {:} already done ... continue".format(out))
         continue
 
     cat = pyfits.open(nam)
@@ -51,12 +61,12 @@ for n in range(1, len(sys.argv)):
     flag = hdu[1].data.field('FLAGS')
     
     loc = np.where(flag < 4)
-    np.savetxt("tmp1", np.transpose((ra[loc],de[loc])), delimiter=" ", fmt=fmt_ok)
+    np.savetxt(tmp1, np.transpose((ra[loc],de[loc])), delimiter=" ", fmt=fmt_ok)
     loc = np.where(flag >= 4)
-    np.savetxt("tmp2", np.transpose((ra[loc],de[loc])), delimiter=" ", fmt=fmt_ko)
-    os.system("cat tmp1 tmp2 > {:} ".format(out))
+    np.savetxt(tmp2, np.transpose((ra[loc],de[loc])), delimiter=" ", fmt=fmt_ko)
+    os.system("cat {:} {:} > {:} ".format(tmp1, tmp2, out))
     
-    if len(sys.argv)-1 > 1:
-        print ">> Built %s"%out
-    os.system("rm tmp1 tmp2")
+#    if len(sys.argv)-1 > 1:
+    print(">> Built {:} with {:} entries".format(out,len(de)))
+    os.system("rm {:} {:}".format(tmp1, tmp2))
 #-----------------------------------------------------------------------------

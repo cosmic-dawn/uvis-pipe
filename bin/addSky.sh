@@ -3,7 +3,7 @@
 #PBS -N addSky_@FILTER@_@ID@
 #PBS -o @IDENT@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=7,walltime=24:00:00
+#PBS -l nodes=1:ppn=3,walltime=24:00:00
 #-----------------------------------------------------------------------------
 # template:  addSky script
 # requires: intelpython, astropy.io.fits, uvis scripts and libs

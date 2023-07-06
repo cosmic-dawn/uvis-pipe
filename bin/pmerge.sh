@@ -74,7 +74,7 @@ wtout=${stout%.fits}_weight.fits
 
 # Build command line:
 suff=$(echo ${list%.lst} | cut -d\_ -f2 )
-logfile=$WRK/images/pmerge_$suff.log
+logfile=$WRK/images/pmerge_$suff.log               #logfile=$WRK/images/pmerge.log
 
 # Command to produce the stack and its weight ...
 args=" -c $confdir/swarp238.conf  -WEIGHT_SUFFIX _weight.fits -WEIGHT_TYPE MAP_WEIGHT  \
@@ -98,33 +98,34 @@ else
 	echo $comm 
 fi
 
-#-----------------------------------------------------------------------------
-# For pass 1, also build mask file; Command is mask_for_stack.py ...
-#-----------------------------------------------------------------------------
-if [ $pass -eq 1 ]; then
-    ec "#------------------------------------------------------------------" | tee -a $logfile 
-    ec " >>>>  Build mask etc. for $stout  <<<<"                             | tee -a $logfile 
-    ec "#------------------------------------------------------------------" | tee -a $logfile 
-    
-    # add the --extendedobj option to use back_size 512 / back_filtersize 5 in order to
-    # improve mask of bright star haloes - AM 24.jun.18
-    # Threshold of 1.0 seems ok for N and Y, not sure for others ....
-    
-    case $FILTER in
-        N | Y | NB | NB118 ) thr=1. ;;
-        J         ) thr=0.7 ;;
-        H         ) thr=0.5 ;;
-        K | Ks    ) thr=0.9 ;;
-    esac
-    
-	#  --script-path $confdir/c_script 
-    args=" --conf-path $confdir --extendedobj --threshold $thr "
-    comm="python $pydir/mask_for_stack.py -I $stout -W $wtout $args "
-    ec "% $comm "  | tee -a $logfile  ; ec ""
-    if [ $dry == 'F' ]; then 
-		$comm >> $logfile 2>&1 
-	fi
-fi
+#### DON'T BUILD THIS MASK HERE in DR6 - DONE ELSEWHERE  ####
+###-----------------------------------------------------------------------------
+### For pass 1, also build mask file; Command is mask_for_stack.py ...
+###-----------------------------------------------------------------------------
+##if [ $pass -eq 99 ]; then   
+##    ec "#------------------------------------------------------------------" | tee -a $logfile 
+##    ec " >>>>  Build mask etc. for $stout  <<<<"                             | tee -a $logfile 
+##    ec "#------------------------------------------------------------------" | tee -a $logfile 
+##    
+##    # add the --extendedobj option to use back_size 512 / back_filtersize 5 in order to
+##    # improve mask of bright star haloes - AM 24.jun.18
+##    # Threshold of 1.0 seems ok for N and Y, not sure for others ....
+##    
+##    case $FILTER in
+##        N | Y | NB | NB118 ) thr=1. ;;
+##        J         ) thr=0.7 ;;
+##        H         ) thr=0.5 ;;
+##        K | Ks    ) thr=0.9 ;;
+##    esac
+##    
+##	#  --script-path $confdir/c_script 
+##    args=" --conf-path $confdir --extendedobj --threshold $thr "
+##    comm="python $pydir/mask_for_stack.py -I $stout -W $wtout $args "
+##    ec "% $comm "  | tee -a $logfile  ; ec ""
+##    if [ $dry == 'F' ]; then 
+##		$comm >> $logfile 2>&1 
+##	fi
+##fi
 
 edate=$(date "+%s"); dt=$(($edate - $sdate))
 ec "#------------------------------------------------------------------" | tee -a $logfile 

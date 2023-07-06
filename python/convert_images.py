@@ -1,10 +1,10 @@
-# File convert_images.py
-# uses python 2
-#-------------------------------------------------------
+#!/usr/bin/env python
+
+# -------------------------------------------------------
 # Convert a list of VISTA images to wircam standards
 # input : l,list     : list of image 
 #       : i,image    : image
-#--------------------------------------------------------
+# --------------------------------------------------------
 
 import os, sys
 import re, glob
@@ -15,7 +15,16 @@ import astropy.io.fits as pyfits
 import convertim_lib
 from logger_lib import setup_logger
 
-#--------------------------------------------------------
+
+def get_survey_keyname(name):
+    if name.lower() == "ultravista":
+        return "Ult"
+    if name.lower() == "viking":
+        return "VIK"
+    if name.lower() == "video":
+        return "VID"
+    return -1
+
 
 def get_parser():
 
@@ -31,6 +40,10 @@ def get_parser():
     parser.add_argument('-s', '--stack_dir', dest='stack_dir', help='Stacks directory', type=str, default='./')
     parser.add_argument('--stack_addzp', dest='stack_addzp', help='Config files of ZP to copy from stacks', type=str, default='')
     
+#    # Keywords from QC files
+#    parser.add_argument('-q', '--QCfiles', dest='QCfiles', help='List of QC files (fits)', type=str, default='')
+#    parser.add_argument('--QC_addzp', dest='QC_addzp', help='Config files of ZP to copy from QCfiles (olfKey newKey)', type=str, default='')
+    
     parser.add_argument('--survey', dest='survey', help='Survey name (def = all)', type=str, default='Ultravista')
 
     # verbose options
@@ -39,12 +52,10 @@ def get_parser():
 
     return parser
 
-#--------------------------------------------------------
-
 def main(args):
     """
-    Main function. Get the arguments from the args dictionnary
-    :param args: dictionary of arguments (see parser for list and description)
+    Main fonction. Get the arguments from the args dictionnary
+    :param args: dictionnary of arguments (see parser for list and description)
     :return:
     """
 
@@ -73,6 +84,59 @@ def main(args):
     logf = open(args.flog, 'w')
     logf.write("# 1 IMAGE \n")
     logf.write("# 2 STATUS \n")
+    
+#    #########################################
+#    # Keys from QC files (NOT FINISHED YET) #
+#    #########################################
+#    
+#    # Check list of QC files
+#    list_QCfiles = []
+#    if args.QCfiles != "":
+#        list_QCfiles0 = args.QCfiles.split(",")
+#        for f in list_QCfiles0:
+#            if not os.path.isfile(f):
+#                logging.error("QC file not found ... %s" % f)
+#                sys.exit(1)
+#            list_QCfiles.append(f)
+#    
+#    # Read the list of keys
+#    data_QCkeys = {}
+#    if args.QC_addzp != "":
+#        if not os.path.isfile(args.QC_addzp):
+#            logging.error("Impossible to open %s " % args.QC_addzp)
+#            sys.exit(1)
+#        lines = os.popen("cat " + args.QC_addzp)
+#    
+#        toks = line.strip().split()
+#        ikey = ""
+#        okey = ""
+#        if toks[0] == "HIERARCH":
+#            ikey = " ".join(toks[:-1])
+#        else:
+#            ikey = toks[0]
+#        okey = toks[-1]
+#    
+#        if ikey == "" or okey == "":
+#            print "Big problem in adding keywords ... line : ", line
+#            sys.exit(1)
+#        data_QCkeys[ikey] = okey
+#    
+#    # Read the keywords from the QC files
+#    data_QC = {"NB118": {}, "J": {}, "H": {}, "Ks": {}, "Y": {}, "Z": {}}
+#    keys_QC = data_QCkeys.keys()
+#    for f in list_QCfiles:
+#        pycat = pyfits.open(f)
+#        data = pycat[1].data
+#        keys = pycat[1].data.names
+#    
+#        # Which survey
+#        surveyname = get_survey_keyname(args.survey)
+#    
+#        inds = numpy.where(data['surveyname'] == surveyname)
+#        filenames = list(set(data['filename'][inds]))
+#    
+#        for filename in filenames:
+#            inds = numpy.where(data['filename'] == filename)
     
     ####################
     # Keys from stacks #

@@ -3,7 +3,7 @@
 #PBS -N pscamp_@PTAG@_@FILTER@
 #PBS -o @IDENT@.out
 #PBS -j oe
-#PBS -l nodes=1:ppn=22,walltime=@WTIME@:00:00
+#PBS -l nodes=1:ppn=9:hasnogpu,walltime=@WTIME@:00:00
 #-----------------------------------------------------------------------------
 # pscamp: run scamp on a list of ldacs
 # requires: astromatic suite, ... intelpython, astropy.io.fits, uvis scripts and libs
@@ -36,18 +36,18 @@ module=pscamp_@PTAG@               # w/o .sh extension
 uvis=/home/moneti/softs/uvis-pipe # top UltraVista code dir
 bindir=$uvis/bin
 pydir=$uvis/python                # python scripts
-confdir=$uvis/config              # config dir
 scripts=$uvis/scripts             # other scripts dir (awk ...)
+export confdir=$uvis/config              # config dir
 
 # check  if run via shell or via qsub:
 ec "#-----------------------------------------------------------------------------"
 if [[ "$0" =~ "$module" ]]; then
     ec "# $module: running as shell script on $(hostname)"
-#	if [[ "${@: -1}" =~ 'dry' ]] || [ "${@: -1}" == 'test' ]; then dry=T; else dry=F; fi
 	list=@LIST@
 	dry=@DRY@
 	WRK=@WRK@
 	ptag=@PTAG@
+	pass=@PASS@
 	FILTER=$FILTER
 	verb=" -VERBOSE_TYPE LOG"
 	pipemode=0
@@ -58,60 +58,61 @@ else
 	ptag=@PTAG@
 	list=@LIST@
 	FILTER=@FILTER@
+	pass=@PASS@
 	verb=" -VERBOSE_TYPE LOG" # QUIET"
 	pipemode=1
 fi
+export FILTER=$FILTER
 
 ec "#-----------------------------------------------------------------------------"
 
 #-----------------------------------------------------------------------------------------------
-case  $FILTER in   # P,Q,R,T filters were test spaces in dr4
-   N | NB118 | P) magzero=29.14 ; FILTER=NB118 ;;
-   Y | Q        ) magzero=29.39 ;;
-   J | R        ) magzero=29.10 ;;
-   H | S        ) magzero=28.62 ;;
-   K | Ks | T   ) magzero=28.16 ; FILTER=Ks    ;;
+case  $FILTER in 
+   N | NB118) magzero=29.14 ;;   # FILTER=NB118 ;;
+   Y | Q    ) magzero=29.39 ;;
+   J | R    ) magzero=29.10 ;;
+   H | S    ) magzero=28.62 ;;
+   K | Ks   ) magzero=28.16 ;;   # FILTER=Ks    ;;
    * ) ec "# ERROR: invalid filter $FILTER"; exit 3 ;;
 esac   
-#-----------------------------------------------------------------------------------------------
-
-#version="2.6.3"     # this version used in DR4
-#version="2.7.8"    
-#version="2.9.2"
-#version="2.9.3-altaz_fix"    # to test, from EB
-version="2.10.0"   # avec Gaia-EDR3, mais tjrs sans support des PMs
-
-myscamp="/softs/astromatic/scamp/${version}-gnu/bin/scamp" 
-
-#myscamp="/home/hjmcc/Downloads/scamp/src/scamp" ; version="2.10.0_hjmcc"  # v2.10.0 with new intel compiler (from Henry)
-#myscamp="/home/moneti/bin/scamp_2.9.3_morpho"   ; version="2.9.3_morpho"  ; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/softs/plplot/5.15.0/lib
 #-----------------------------------------------------------------------------------------------
 
 cd $WRK
 
 nldacs=$(cat $list | wc -l)
-for f in $(cut -d\. -f1  $list); do ls ${f}.ahead 2> /dev/null ; done > ${list}.aheads
-naheads=$(cat ${list}.aheads 2> /dev/null | wc -l)
-rm ${list}.aheads
+for f in $(cut -c1-15  $list); do ls ${f}.ahead 2> /dev/null ; done > ${list}.aheads
+naheads=$(cat ${list}.aheads 2> /dev/null | wc -l) ; rm ${list}.aheads
+if [ $naheads -eq 0 ]; then
+	ec "# PROBLEM: no photref files for this list"
+fi
 
-sconf=scamp_dr5.conf   # new one for DR5
+ec "# Using $list with $nldacs files and $naheads photref  files "
+ec "# Filter is $FILTER; magzero = $magzero" 
+ec "# Using scamp  ==> $(scamp -v)"
+sconf=$confdir/scamp_dr6.conf   # new one for DR5
+ec "# scamp config file is $sconf"
+
 logfile=$WRK/$module.log ; rm -f $logfile
-
+season=$(echo $list | cut -c9-10)
 args=" -c $sconf  -MAGZERO_OUT $magzero  -ASTRINSTRU_KEY OBJECT "
-catal="-ASTREFCAT_NAME GAIA-EDR3_1000+0211_r61.cat"  # use a local reference catalogue
-ahead="-AHEADER_GLOBAL vista_gaia.ahead -MOSAIC_TYPE SAME_CRVAL"
-extra="-XML_NAME $module.xml"
-pname="-CHECKPLOT_NAME fgroups_${ptag},referr2d_${ptag},referr1d_${ptag},interr2d_${ptag},interr1d_${ptag},photerr_${ptag}"
+
+if [[ ${pass: -1} =~ 'm' ]]; then
+	ec "# ###  Using season-specific GAIA reference catalgues   ###"
+	catal="-ASTREFCAT_NAME $confdir/GAIA-EDR3_s${season}.cat"       # multi: Catals by season
+else
+	ec "# ###  Using single GAIA reference catalgues for full survey ###"
+	catal="-ASTREFCAT_NAME $confdir/GAIA-EDR3_1000+0211_r61.cat"   # single: GAIA catal for all times
+fi
+
+ahead="-AHEADER_GLOBAL ${confdir}/vista_${FILTER}.ahead  -MOSAIC_TYPE SAME_CRVAL"   # in config file
+extra="-ASTRACCURACY_TYPE TURBULENCE-ARCSEC -ASTR_ACCURACY 0.054  -POSITION_MAXERR 2.8  -XML_NAME $module.xml"
+ptype="-CHECKPLOT_TYPE  FGROUPS,ASTR_REFERROR1D,ASTR_REFERROR2D"
+pname="-CHECKPLOT_NAME groups_${ptag},refe1d_${ptag},refe2d_${ptag}"
 
 # build command line
-comm="$myscamp @$list  $args  $ahead  $catal  $extra $pname $verb"
+comm="scamp @$list  $args  $ahead  $catal  $extra $ptype $pname $verb"
 
-
-ec "# Using $list with $nldacs files; and $naheads ahead files "
-ec "# Filter is $FILTER; magzero = $magzero" 
-ec "# Using $myscamp  ==> $($myscamp -v)"
 ec "# PBS resources: $(head $WRK/$module.sh | grep nodes= | cut -d \  -f3)"
-ec "# Scamp config file is $sconf"
 ec "# logfile is $logfile"
 ec "# Command line is:"
 ec "    $comm"
@@ -167,10 +168,10 @@ fi
 $pydir/scamp_xml2dat.py $module.xml 
 
 # rename the pngs to have the filter name and the pass - just to rename the png files
-if [ $FILTER == 'NB118' ]; then FILTER='N'; fi
-if [ $FILTER == 'Ks' ];    then FILTER='K'; fi
+#if [ $FILTER == 'NB118' ]; then FILTER='N'; fi
+#if [ $FILTER == 'Ks' ];    then FILTER='K'; fi
 
-rename _1.png _${FILTER}.png [f,i,r,p]*_1.png
+rename _1.png _${FILTER}.png [g,i,r,p]*_1.png
 
 #-----------------------------------------------------------------------------
 # and finish up

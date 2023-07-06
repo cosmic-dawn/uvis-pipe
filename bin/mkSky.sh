@@ -3,22 +3,21 @@
 #PBS -N mkSky_@FILTER@_@ID@
 #PBS -o @IDENT@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=11,walltime=48:00:00
+#PBS -l nodes=1:ppn=5,walltime=48:00:00
 #-----------------------------------------------------------------------------
 # module: mkSky script
-# for each frame, combine images obtained close in time using a median filter
-# to remove the stars in order to build a pure sky image that will later be 
-# subtracted from the source image.
-#
-# set ppn=5 to limit num jobs running in parallel to 8.  This also leaves 3
-# nodes free for other stuff (interactive work).  
-#
-# 17.aug/??: 
-# - created from subSky.sh and in order to remove the (simple) sky subtraction; 
+# wrapper for mkSky.py: for each frame, combine images obtained close in time
+# using a median filter to remove the stars in order to build a pure sky image
+# that will later be subtracted from the source image.
+##
+# 17.aug/19: 
+# - created from subSky.sh in order to remove the (simple) sky subtraction; 
 # - also adapted to work on "remote" nodes
 # 10.may.21:
 # - misc adaptation and add'l checks for DR5
 # - including increase of ppn to 7
+# 14.apr.23:
+# - minor fixes for DR6
 #-----------------------------------------------------------------------------
 set -u  
 # paths
@@ -91,9 +90,8 @@ ec " >>>>  Begin mkSky on $list $nl images and with $skylist <<<<"
 echo "------------------------------------------------------------------"
 
 case $FILTER in
-	N | NB118 | Y | J  ) delta=40 ;;
-	H | K | Ks | T | S ) delta=20 ;;
-	Q | R | P          ) delta=40 ;;   # the test filters
+	N | Y | J  ) delta=40 ;;
+	H | K      ) delta=20 ;;
 esac   
 		
 args=" --inmask-suffix _mask.fits  --outweight-suffix _mask.fits  -n 20  --pass2  -d 1000.0  -t $delta "
@@ -121,18 +119,15 @@ ec ""
 
 ec "## Link the needed data and config files... "
 cp $datadir/$list $datadir/$skylist .
-ln -s /n08data/UltraVista/DR5/bpms/bpm_comb_20190420.fits zeros.fits
+ln -s /n08data/UltraVista/DR6/bpms/bpm_comb_20190420.fits zeros.fits
 ln -s $confdir/swarp238.conf ./swarp.conf
 cp $confdir/bgsub.param $confdir/bgsub.conf $confdir/gauss_3.0_7x7.conv .
-#cp $confdir/bgsub.param $confdir/swarp.conf .
-#cp $confdir/bgsub.conf $confdir/gauss_3.0_7x7.conv .
 
 for f in $(cat $skylist); do 
 	r=${f%.fits}
 	ln -s $datadir/Masks/${r}_mask.fits .
 	ln -s $datadir/weights/${r}_weight.fits .
 	ln -s $datadir/withSky/${r}_withSky.fits ${r}.fits
-#	ln -s $datadir/heads/${r}.head .   ### Don't want these
 done
 
 #-----------------------------------------------------------------------------
@@ -159,7 +154,8 @@ if [ $dry == 'T' ]; then
 else
 	ec "## Begin work ... "
     $comm >> $logfile.log 2>> $logfile.err
-	strings  $logfile.err > x ; mv x $logfile.err   # to remove blank lines
+    # to remove blank lines and unneeded warnings from error logs
+	strings $logfile.err | grep -v FITS\ header > x ; mv x $logfile.err   
 
 	# check products
 	nima=$(cat $list | wc -l)
@@ -175,7 +171,6 @@ else
 		echo " >>>> $module.sh finished - walltime: $dt sec  <<<<"
 		echo "------------------------------------------------------------------"
 		errcode=2
-#		mv  mkSky_??.log mkSky_??.err  $datadir/
 	else                             ### SUCCESS
 		echo " >> Found $nsky _sky files - move them back to images/ and clean up"
 	    # mv products back to images/
@@ -187,6 +182,7 @@ else
 fi
 
 cd $datadir
+# remove workdir if all went well
 if [ $errcode -eq 0 ]; then rm -rf $workdir; fi
 
 #-----------------------------------------------------------------------------

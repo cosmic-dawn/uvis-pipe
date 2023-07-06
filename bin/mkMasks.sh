@@ -3,7 +3,7 @@
 #PBS -N Masks_@FILTER@_@ID@
 #PBS -o @IDENT@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=9,walltime=24:00:00
+#PBS -l nodes=1:ppn=5,walltime=24:00:00
 #-----------------------------------------------------------------------------
 # module: mkMasks.sh - wrapper to launch mkMasks.py
 # requires: intelpython, uvis scripts mkMasks.py and meanLevels.py
@@ -20,6 +20,9 @@
 # Notes:
 # - requires ~32 GB for a batch of 100 frames, of which 26 are the _mask files
 #   produced ==> can run on small scratch disks
+#-----------------------------------------------------------------------------
+# apr.23: minor adaptations for DR6
+# - input head files in .../images/heads_q1m
 #-----------------------------------------------------------------------------
 set -u  
 # paths
@@ -93,14 +96,17 @@ fi
 if [ ! -d $datadir ];       then echo "ERROR: $WRK/images not found ... quitting"; exit 5; fi
 if [ ! -s $datadir/$list ]; then echo "ERROR: $list not found in $WRK/images ... quitting"; exit 5; fi
 
-nl=$(cat $list | wc -l)
+nl=$(cat $datadir/$list | wc -l)
 ec "=================================================================="
 ec " >>>>  Begin mkMasks on $list with $nl entries   <<<<"
 ec "------------------------------------------------------------------"
 
 # command line
 osuff="_mask.fits"
-stout=UVISTA-DR4-RC2a_${FILTER}_full_lr  # root for reference files
+# root for reference files for DR6; these are links to the DR5 full stack,
+# its weight and its obFlag
+stout=DR5_${FILTER}  
+
 refs=" -S ${stout}.fits  -W ${stout%.fits}_weight.fits -M zeroes.fits  "
 thresh=" --threshold 1.5 "   # in practice the default value
 args=" --inweight-suffix _weight.fits  --outweight-suffix $osuff  $thresh  \
@@ -127,15 +133,19 @@ ec ""
 
 ec "## Link the needed data and config files... "
 cp $datadir/$list .
-ln -s $datadir/UVISTA-DR4* .
-lbpm=$(\ls -t /n08data/UltraVista/DR5/bpms/bpm*201902*.fits | head -1)   # a fairly recent one
-rm zeroes.fits ; ln -sf $lbpm zeroes.fits
+ln -s $datadir/DR5_${FILTER}.fits .          # the DR5 stack
+ln -s $datadir/DR5_${FILTER}_weight.fits .   # its weight
+ln -s $datadir/DR5_${FILTER}_obFlag.fits .   # and its obFlag
+
+rm -f zeroes.fits       # just in case, before dfining new one
+lbpm=$(\ls -t /n08data/UltraVista/DR6/bpms/bpm*201902*.fits | head -1)
+ln -sf $lbpm zeroes.fits
 cp $confdir/missfits.conf .
 
 for f in $(cat $list); do r=${f%.fits}
     ln -s $datadir/origs/$f .                  # should be CASU image
     ln -s $datadir/weights/${r}_weight.fits .
-    ln -s $datadir/heads/${r}.head .
+    ln -s $datadir/heads_q1m/${r}.head .
 done
 
 #-----------------------------------------------------------------------------
@@ -167,7 +177,14 @@ if [ $dry != 'T' ]; then
     fi
 
 	# remove blank lines from err file:
-	strings $logfile.err > x ; mv x $logfile.err
+	grep -v "WARNING: FITS header" $logfile.err | strings  > x 
+	if $(cat x | wc -l) -gt 0; then
+		mv x $logfile.err
+		ec "## Errors found; see $logfile.err)"
+	else
+		ec "# No errors found ... good job"
+		rm $logfile.err
+	fi
 
     ec "# and build the masks levels file ..."
     echo "# Build masks levels file: $logfile.dat" >> $logfile.log

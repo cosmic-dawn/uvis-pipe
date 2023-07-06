@@ -1,3 +1,6 @@
+
+#####!/opt/intel/intelpython2-2019.4-088/intelpython2/bin/python
+
 from stats import *
 import numpy as np
 import astropy.io.fits as fits
@@ -60,10 +63,10 @@ def merge_ldac(pyim,list_extent=""):
             for l in list:
                 list_ext.append(int(l))
         except:
-            print "Incorrect list of extentions"
+            print("Incorrect list of extentions")
             sys.exit(1)
         if max(list_ext) >= next:
-            print "List of extentions out of range ... next=%s ... ext list=%s" % (str(next),list_extent)
+            print("List of extentions out of range ... next={:} ... ext list={:}".format(str(next),list_extent))
             sys.exit(1)
     else:
         for i,ext in enumerate(pyim):

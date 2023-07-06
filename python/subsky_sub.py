@@ -8,6 +8,7 @@ from TMASS_lib import *
 import numpy
 import numpy.random
 from multiprocessing import Pool
+numpy.set_printoptions(precision=2)
 
 # General values / Configuration parameters ...
 
@@ -450,15 +451,13 @@ def project_combine(maskin, maskout, im, next, options):
 
 # Read a list og keywords in a list of images
 def read_header(list, keys):
-    ''' Read a list og keywords in a list of images '''
+    ''' Read a list of keywords in a list of images '''
     data = {}
     for k in keys:
 	data[k] = []
 
     for im in list:
-	# print "image : "+im
 	pyim = pyfits.open(im)
-
 	for k in keys:
 	    try:
 		val = pyim[0].header[k]
@@ -466,9 +465,7 @@ def read_header(list, keys):
 		val = 'Nada'
 	    data[k].append(val)
 
-	pyim.close()
-    # Special treatment of FILENAME
-
+        pyim.close()
     return data
 
 
@@ -595,18 +592,18 @@ def get_skylist_sub_new(im, ind0, sublist, data, data_sub, options):
     cosdec2 = (math.cos(dec0)) ** 2
 
     if ra0 == 'Nada' or dec0 == 'Nada':
-	return []
+        return []
 
     good_im = []
     dtime_list = []
     filename_list = []
     for ind in range(len(sublist)):
-	if sublist[ind] != im and filter0 == data_sub['FILTER'][ind]:
-	    d2 = (data_sub['RA_DEG'][ind] - ra0) * (data_sub['RA_DEG'][ind] - ra0) * cosdec2 + (data_sub['DEC_DEG'][ind] - dec0) * (data_sub['DEC_DEG'][ind] - dec0)
-	    if d2 <= dist2:
-		good_im.append(ind)
-		dtime_list.append(abs(data['MJDATE'][ind0] - data_sub['MJDATE'][ind]))
-		filename_list.append(data_sub['FILENAME'][ind])
+        if sublist[ind] != im and filter0 == data_sub['FILTER'][ind]:
+            d2 = (data_sub['RA_DEG'][ind] - ra0) * (data_sub['RA_DEG'][ind] - ra0) * cosdec2 + (data_sub['DEC_DEG'][ind] - dec0) * (data_sub['DEC_DEG'][ind] - dec0)
+            if d2 <= dist2:
+                good_im.append(ind)
+                dtime_list.append(abs(data['MJDATE'][ind0] - data_sub['MJDATE'][ind]))
+                filename_list.append(data_sub['FILENAME'][ind])
 
     # sort
     dtime_sorted = range(len(good_im))
@@ -621,31 +618,62 @@ def get_skylist_sub_new(im, ind0, sublist, data, data_sub, options):
         if dtime_list[i] <= options.dtime2 and count < options.numim:
             final.append(sublist[good_im[i]])
             count += 1
-#    else:
-#	final = []
-#	count_cube = 0
-#	list_cube = []
-#	cube_full = 0
-#	for i in dtime_sorted:
-#	    print "----- " + sublist[good_im[i]]
-#	    print list_cube
-#	    print final
-#	    if dtime_list[i] <= options.dtime2:
-#		if cube_full == 0 and not filename_list[i] in list_cube:
-#		    list_cube.append(filename_list[i])
-#		    if len(list_cube) >= options.numcube:
-#			cube_full = 1
-#		if filename_list[i] in list_cube:
-#		    final.append(sublist[good_im[i]])
 
     # Select random images from the cubes
     final2 = []
-#    if options.nimcube != 0:
-#	final2 = select_imcube(final, options.nimcube)
-#    else:
+
     final2 = [im for im in final]
 
     return final2
+def get_skylist_dr6(im, ind0, sublist, data, data_sub, options):
+    ''' Updates for DR6
+    Get the list of images to perform the sky subtraction
+    2023.apr:
+    - delete some commeted lines;
+    - check sky bgd values in subsilt and remove outliers
+    '''
+
+    numpy.set_printoptions(precision=4)
+    dtime = options.dtime2  # in minutes of time
+    dist2 = options.dist2   # in arcsec
+
+    # Filter by filter & position
+    filter0 = data['FILTER'][ind0]
+    ra0 = data['RA_DEG'][ind0]
+    dec0 = data['DEC_DEG'][ind0]
+    date0 = data['MJDATE'][ind0]
+    cosdec2 = (math.cos(dec0)) ** 2
+
+    if ra0 == 'Nada' or dec0 == 'Nada':
+	return []
+
+    good_im = []
+    dtime_list = []
+    filename_list = []
+    for ind in range(len(sublist)):
+	if sublist[ind] != im and filter0 == data_sub['FILTER'][ind]:
+	    d2 = (data_sub['RA_DEG'][ind] - ra0) * (data_sub['RA_DEG'][ind] - ra0) * cosdec2 + (data_sub['DEC_DEG'][ind] - dec0) * (data_sub['DEC_DEG'][ind] - dec0)
+	    if d2 <= dist2:
+		good_im.append(ind)
+		dtime_list.append(abs(data['MJDATE'][ind0] - data_sub['MJDATE'][ind]))
+		filename_list.append(data_sub['FILENAME'][ind])
+
+    # sort
+    dtime_sorted = range(len(good_im))   
+    filename_sorted = range(len(good_im))
+
+    dtime_sorted.sort(lambda x, y: cmp(dtime_list[x], dtime_list[y]))
+    filename_sorted.sort(lambda x, y: cmp(dtime_list[x], dtime_list[y]))
+
+    final = []
+    count = 0
+    for i in dtime_sorted:
+        if dtime_list[i] <= options.dtime2 and count < options.numim:
+            final.append(sublist[good_im[i]])
+#            print "[]    - %s "%(sublist[good_im[i]])
+            count += 1
+    
+    return final
 
 
 def select_imcube(final, nim):
@@ -696,7 +724,7 @@ def cp_head(infits, outhead):
 	file.write(pi[0].header)
 	file.write('\nEND')
     else:  # MEF
-	print " - Copy headers for %i extensions"%(len(pi)-1)	# AMo: to replace print in loop below
+#	print " - Copy headers for %i extensions"%(len(pi)-1)	# AMo: to replace print in loop below
 	for i in range(1, len(pi), 1):
             #print i			# AMo: - replaced by message before loop
 	    file.write(pi[i].header.__str__())

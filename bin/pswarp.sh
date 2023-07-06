@@ -3,7 +3,7 @@
 #PBS -N sw_@FILTER@_@PAW@
 #PBS -o @IDENT@_@PAW@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=@PPN@:bigscratch,walltime=48:00:00
+#PBS -l nodes=1:ppn=@PPN@:hasnogpu,walltime=48:00:00
 #-----------------------------------------------------------------------------
 # pswarp:  pswarp script
 # requires: astropy.io.fits, uvis scripts and libs
@@ -63,7 +63,7 @@ fi
 
 pawname=$(echo $list | cut -d\_ -f2-6 | cut -d\. -f1) 
 outname=substack_${pawname}                          
-echo "DEBUG: pawname $pawname" ; echo "DEBUG: outname $outname" 
+#echo "DEBUG: pawname $pawname" ; echo "DEBUG: outname $outname" 
 
 #-----------------------------------------------------------------------------
 # The REAL work ... done in temporary workdir
@@ -81,7 +81,8 @@ fi
 dirname=$(echo $list | cut -d\. -f1)
 whost=$(hostname)   #; echo "DEBUG: ref/work hosts: $rhost  $whost"
 
-if [[ $whost == 'n09' ]] || [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
+#if [[ $whost == 'n09' ]] || [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
+if [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
     workdir=/${whost}data/${dirname}_$FILTER     # node with small scratch
 else                        
     workdir=/scratch/${dirname}_$FILTER          # other node
@@ -94,6 +95,8 @@ nl=$(cat $datadir/$list | wc -l)
 echo "  =================================================================="
 echo "    >>>>  Begin pswarp $list on $nl files <<<<"
 echo "  ------------------------------------------------------------------"
+
+cltag=@CLTAG@   # which clean files to use
 
 ec "## Working on $(hostname); temprary work dir name is $workdir; data on $WRK"
 
@@ -120,10 +123,10 @@ for f in $(cat $list); do r=${f%.fits}
 	if [ $pass -eq 1 ]; then 
 		ln -sf $datadir/origs/${r}.fits $f
 	else
-		ln -sf $datadir/cleaned/${r}_clean.fits $f
+		ln -sf $datadir/cleaned/${r}_${cltag}.fits $f
 	fi
 	ln -sf $datadir/weights/${r}_weight.fits .
-	ln -sf $datadir/heads/${r}.head .
+	ln -sf @HEADSDIR@/${r}.head .
 done
 
 #### products and logfile written directly into work area to easily follow progress
@@ -138,6 +141,7 @@ args=" -c $confdir/swarp238.conf  -WEIGHT_SUFFIX _weight.fits  -WEIGHT_TYPE MAP_
    -COMBINE_TYPE CLIPPED  -CLIP_SIGMA 2.8  -DELETE_TMPFILES N   \
    -RESAMPLE Y  -RESAMPLING_TYPE LANCZOS2  \
    -SUBTRACT_BACK $subsky  -WRITE_XML Y  -XML_NAME ${outname}.xml   "
+#   -BACK_SIZE 256  -BACK_FILTERSIZE 5      # equivalent to extended objects option in mk_object_mask
    # -CLIP_WRITELOG Y  -CLIP_LOGNAME ${outname}_clip.log
 
 # ATTN: lots of jobs aborted with  -COMBINE_BUFSIZE 16384!!  ok with 8192 (def)
@@ -170,6 +174,7 @@ if [ $dry == 'F' ]; then
 		ec "# swarp run successful, see $(ls -lh ${outfile}.fits | cut -d\  -f5-9) "
 		ec "# $(tail -1 $logfile) "  # line showing "Add done" and exec time 
         ec "# Clean up ... delete $workdir"
+		rm -rf $workdir
 		rm -rf $workdir
 	fi
     #-----------------------------------------------------------------------------

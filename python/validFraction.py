@@ -1,3 +1,4 @@
+#!/opt/intel/intelpython2-2019.4-088/intelpython2/bin/python
 #------------------------------------------------
 # validFraction.py
 #------------------------------------------------
@@ -36,12 +37,12 @@ for line in lines:
     n_ext = len(pima)
     if n_ext == 1:
         fr = np.mean(pima[0].data)
-        print "%-22s  %0.2f "%(ima, 100*fr)
+        print "%-22s  %0.2f "%(ima.split('.')[0], 100*fr)
     else:
         fr = []
         for i in range(1,n_ext):
             fr.append(np.mean(pima[i].data))
-        print "%-22s   "%ima, ' '.join(["%5.2f"%x for x in fr])
+        print "%-20s"%ima.split('.')[0], ' '.join(["%5.2f"%x for x in fr])
     
     pima.close()
 

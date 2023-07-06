@@ -65,6 +65,7 @@ def main(args):
         ima = line.strip().split()[0]
         bpm = line.strip().split()[4]
         sky = line.strip().split()[6]
+#        print ima,bpm,sky
         out = ima.replace(".fits", args.osuff)
         logging.info("on %s with %s and %s"%(ima, bpm, sky))
 

@@ -1,13 +1,14 @@
-#!/usr/bin/env python
-
+#!/opt/intel/intelpython2-2019.4-088/intelpython2/bin/python
 #-----------------------------------------------------------------------------
-# Double pass sky subtraction - build sky image
+# Double pass sky subtraction - build sky image (traditional method using 
+# swarp to stack-median filter sky frame)
 #
 # Jan.18, AMo: 
 #   fixed to handle images with insufficient nearby frames to build sky
-# Aug.18: AMo:
+# Aug.18, AMo:
 #   adapated from subSky.py, removing section that does the subtraction
-#
+# Apr.23, Amo:
+#   introduced timing info
 #-----------------------------------------------------------------------------
 
 import math
@@ -18,6 +19,7 @@ import numpy as np
 from subsky_sub import *
 from time import ctime
 import datetime
+import time
 
 parser = OptionParser()
 
@@ -179,6 +181,7 @@ print "# -------------------------------------------------------------"
 data_imlist = read_header(newimlist, keys)    # data of list with enough skies only
 for (im, ind) in zip(newimlist, range(len(newimlist))):
 
+    tini = time.time()
     print " >> Begin working on %s ... "%im
     imroot = im.split(fitsext)[0]
     imhead = imroot + headext
@@ -191,7 +194,7 @@ for (im, ind) in zip(newimlist, range(len(newimlist))):
     print " >> and link it to (pseudo) head files of skies .. links are"
     for skyim in skylist:
         os.symlink(imhead, skyim.split(fitsext)[0] + headext) 
-        print "   " + skyim.split(fitsext)[0]+headext + " -> " + os.readlink(skyim.split(fitsext)[0] + headext)
+        print "   " + skyim.split(fitsext)[0]+headext + " -> " + os.readlink( skyim.split(fitsext)[0] + headext)
 
     # Loop on the extensions
     for ext in exts:
@@ -212,14 +215,14 @@ for (im, ind) in zip(newimlist, range(len(newimlist))):
 
         print " >> Build the sky image (swarp) ==> %s_sky.%i.fits"%(imroot,ext) 
         imout = imroot + '_sky.' + sext + fitsext
-        args = ' -RESAMPLE Y  -RESAMPLING_TYPE NEAREST  -COMBINE_TYPE MEDIAN  -SUBTRACT_BACK Y  -BACK_SIZE 4096  -COPY_KEYWORDS OBJECT,FILTER  -WEIGHT_SUFFIX '+inmask_suf+'  -IMAGEOUT_NAME '+imout+'  -c swarp.conf  -VERBOSE_TYPE QUIET '
+        args = ' -RESAMPLE Y  -RESAMPLING_TYPE NEAREST  -COMBINE_TYPE MEDIAN  -SUBTRACT_BACK Y  -BACK_SIZE 4096  -COPY_KEYWORDS OBJECT,FILTER  -WEIGHT_SUFFIX '+inmask_suf+'  -IMAGEOUT_NAME '+imout+'  -c swarp.conf  -VERBOSE_TYPE QUIET  -WRITE_XML N '
         other = '-WEIGHTOUT_NAME sky.weight.fits  -WEIGHT_TYPE MAP_WEIGHT' # default param, should not be necessary for method median
         # out weights not used - leave default name (coadd.weight.fits) and delete later
 
-        if (ext == 1):  # write xml for first ext only, others are all the same
-            args += '-WRITE_XML Y -XML_NAME '+imroot+'_sky.1.xml '
-        else:
-            args += '-WRITE_XML N'
+#        if (ext == 1):  # write xml for first ext only, others are all the same
+#            args += '-WRITE_XML Y -XML_NAME '+imroot+'_sky.1.xml '
+#        else:
+#        args += '-WRITE_XML N'
 
         if options.dry:
             print " >>>> Dry mode: swarp params to build 1st sky ext <<<<< "
@@ -237,7 +240,7 @@ for (im, ind) in zip(newimlist, range(len(newimlist))):
     print '#---------------  Merge extensions into new MEF file  ----------------'
 
     print "# Join the extentions for %s "%(imroot + '_sky.fits')
-    os.system('missfits -c ' + cpath + '/missfits.conf ' + imroot + '_sky     -OUTFILE_TYPE MULTI -HEADER_SUFFIX none -SAVE_TYPE REPLACE -SPLIT_SUFFIX .%01d.fits')
+    os.system('missfits -c ' + cpath + '/missfits.conf ' + imroot + '_sky  -WRITE_XML N   -OUTFILE_TYPE MULTI -HEADER_SUFFIX none -SAVE_TYPE REPLACE -SPLIT_SUFFIX .%01d.fits')
 
     print "# Clean up (rm v*.*.exp, coadd.*, head, temp files)"
     os.remove('coadd.weight.fits')
@@ -256,12 +259,15 @@ for (im, ind) in zip(newimlist, range(len(newimlist))):
         hd1 = psub[0].header
         for (imm, index) in zip(skylist, range(len(skylist))):
             hd1['SKYIM' + str(index)] = imm
-        hd1['history'] = '# mkSky finished on %s on node %s'%(now.strftime("%Y-%m-%d %H:%M"),os.uname()[1])
-#        hd1['history'] = ' On node %s '%os.uname()[1]
-        hd1['history'] = '# List of sky files used: %s '%flist
+        hd1['history'] = ' mkSky finished on %s '%(now.strftime("%Y-%m-%d %H:%M"))
+        hd1['history'] = ' On node %s '%os.uname()[1]
+        hd1['history'] = ' Files used: %s '%flist
 
 
-    print "#---------------  Finished processing %s  ----------------"%im 
+    print("#-----------------------------------------------------------------------------")
+    print("##  DONE {:}_sky.fits with {:-2n} skies;  exec time: {:0.2f} min".format(imroot, len(skylist), (time.time() - tini)/60))
+    print("#-----------------------------------------------------------------------------")
+    print "#---------------  Finished with %s  ----------------"%im 
 
 #-----------------------------------------------------------------------------
 

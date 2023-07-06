@@ -1,6 +1,7 @@
 #!/bin/sh
 #-----------------------------------------------------------------------------
-# Build lists by paw
+# Build lists by paw: built from FileInfo.dat which contains infor for
+# all files
 #-----------------------------------------------------------------------------
 
 if [ -z ${WRK+x} ]; then 
@@ -37,6 +38,6 @@ if [ $nims -ne $pims ]; then
 	wc -l list_images ; wc -l list_paw?
 fi
 
-for f in $(cat list_paw?); do ln -sf ldacs/${f%.fits}.ldac .; done
+#for f in $(cat list_paw?); do ln -sf ldacs/${f%.fits}.ldac .; done
 
 exit 0

@@ -67,13 +67,13 @@ mlogfile=fix_flats_out.log
 comm="python $mexec -l $list $margs"
 nims=$(cat $list | wc -l)
 
-echo "# Command line is:"
+echo "# Command line, run in $(pwd), is:"
 echo "# $comm"
 
 if [[ $dry != "T" ]]; then
 	$comm > $mlogfile 2>&1 
 	if [ $? -ne 0 ]; then
-		ec "## PROBLEM ## $module.sh - walltime: $dt sec "
+		ec "## PROBLEM ## $module.sh - "
 		tail $mlogfile 
 		ec "------------------------------------------------------------------"
 		exit 1
@@ -94,7 +94,7 @@ mlogfile=norm_flats_out.log
 
 comm="python $mexec -l $list $margs"
 
-echo "# Command line is:"
+echo "# Command line, run in $(pwd), is:"
 echo "# $comm"
 
 if [[ $dry != "T" ]]; then

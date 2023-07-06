@@ -1,5 +1,5 @@
 import astropy.io.fits as pyfits
-
+import sys
 
 class conv_im:
     """ Convert image (like ESO -> CFHT) """
@@ -248,8 +248,8 @@ class conv_im:
                         {self.conv_tables[inst1][inst2]['KEYWORDS'][key]: self.pyim[iext].header[key]})
                     if remove == "yes":
                         del self.pyim[iext].header[key]
-                else:
-                    print "Impossible to update (not found in ext " + str(iext) + ") key " + key
+                    else:
+                        print "Impossible to update (not found in ext " + str(iext) + ") key " + key
                     # return 1
 
             # Copy keys
@@ -310,6 +310,7 @@ class conv_im:
                     self.pyim[iext + 1].header.update({okey: pars[iext]})
             elif len(pars) == 17:  # Write in all extentions
                 for iext in range(17):
+                    print okey, pars[iext]
                     self.pyim[iext].header.update(okey, pars[iext])
 
         # Write stack name
