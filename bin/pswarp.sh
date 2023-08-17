@@ -48,7 +48,7 @@ if [[ "$0" =~ "$module" ]]; then
 	if [[ "${@: -1}" == 'dry' ]]; then dry=T; else dry=F; fi
 	subsky="N"
 	list=$1     # presumably like list_paw3
-	pass=2
+	pass=@PASS@
 	verb=" -VERBOSE_TYPE LOG"
 else
     echo "## This is $module: running via qsub (from pipeline)"
@@ -81,7 +81,6 @@ fi
 dirname=$(echo $list | cut -d\. -f1)
 whost=$(hostname)   #; echo "DEBUG: ref/work hosts: $rhost  $whost"
 
-#if [[ $whost == 'n09' ]] || [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
 if [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
     workdir=/${whost}data/${dirname}_$FILTER     # node with small scratch
 else                        
@@ -141,6 +140,7 @@ args=" -c $confdir/swarp238.conf  -WEIGHT_SUFFIX _weight.fits  -WEIGHT_TYPE MAP_
    -COMBINE_TYPE CLIPPED  -CLIP_SIGMA 2.8  -DELETE_TMPFILES N   \
    -RESAMPLE Y  -RESAMPLING_TYPE LANCZOS2  \
    -SUBTRACT_BACK $subsky  -WRITE_XML Y  -XML_NAME ${outname}.xml   "
+
 #   -BACK_SIZE 256  -BACK_FILTERSIZE 5      # equivalent to extended objects option in mk_object_mask
    # -CLIP_WRITELOG Y  -CLIP_LOGNAME ${outname}_clip.log
 

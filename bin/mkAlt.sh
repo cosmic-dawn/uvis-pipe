@@ -3,7 +3,7 @@
 #PBS -N mkAltSky_@FILTER@_@ID@
 #PBS -o @IDENT@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=15,walltime=48:00:00
+#PBS -l nodes=1:ppn=7,walltime=48:00:00
 #-----------------------------------------------------------------------------
 # module: mkAltSky script
 # wrapper for mkAltSky.py: for each frame, combine images obtained close in time
@@ -69,7 +69,7 @@ rhost=$(echo $WRK | cut -c 2-4)  # host of $WRK
 dirname=$(echo $list | cut -d\. -f1)
 whost=$(hostname)   #; echo "DEBUG: ref/work hosts: $rhost  $whost"
 
-if [[ $whost == 'n09' ]] || [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
+if [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
     workdir=/${whost}data/${dirname}_$FILTER     # node with small scratch
 else                        
     workdir=/scratch/${dirname}_$FILTER          # other node
@@ -167,9 +167,6 @@ else
 	if [ $nalt -ne $nexp ]; then     ### PROBLEM   
 		echo "PROBLEM: found only $nalt files of $nima expected - check logs"
 		echo "PROBLEM: mv products back to images/; keep workdir $workdir"
-#		edate=$(date "+%s"); dt=$(($edate - $sdate))
-#		echo "   #####   $module.sh finished - walltime: $dt sec  #####"
-#		echo "------------------------------------------------------------------"
 		errcode=2
 	else                             ### SUCCESS
 		echo "# Found $nalt _alt files - move them back to images/ and clean up"

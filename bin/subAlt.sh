@@ -3,13 +3,14 @@
 #PBS -N subAlt_@FILTER@_@ID@
 #PBS -o @IDENT@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=9,walltime=18:00:00
+#PBS -l nodes=1:ppn=9,walltime=23:55:00
 #-----------------------------------------------------------------------------
 # module: subAltSky wrapper for subSky.py
 # requires: intelpython, astropy.io.fits, uvis scripts and libs
 # Purpose: actual sky subtraction and destriping
 # Requires:
-# - the withSky file       from which the sky is subtracted
+# XXX the withSky file       from which the sky is subtracted
+# - 13.aug.23: build the "withSky" file here so as to save disk space
 # - the sky file           the sky to subtract (_sky or _alt in DR6)
 #### - the weight file        used by SEx in computing the large-scale bgd
 # - the mask file          used by SEx as weight in computing the large-scale bgd
@@ -45,7 +46,7 @@ errcode=0
 #-----------------------------------------------------------------------------
 # Setup
 #-----------------------------------------------------------------------------
-module=subAltSky                     # w/o .sh extension
+module=subAlt                        # w/o .sh extension
 
 # check  if run via shell or via qsub: 
 if [[ "$0" =~ "$module" ]]; then
@@ -62,6 +63,8 @@ else
     WRK=@WRK@
 fi
 
+export WRK=$WRK
+
 #-----------------------------------------------------------------------------
 # The REAL work ... done in temporary workdir
 #-----------------------------------------------------------------------------
@@ -74,7 +77,7 @@ if [[ "$rhost" =~ "c0" ]]; then
 	exit 0
 fi
 
-# build work dir: 
+# create the work dir: 
 dirname=$(echo $list | cut -d\. -f1)
 whost=$(hostname)   #; echo "DEBUG: ref/work hosts: $rhost  $whost"
 
@@ -92,7 +95,7 @@ nl=$(cat $datadir/$list | wc -l)
 # run these in a separate subdir to avoid problems with parallel runs
 if [ -d $workdir ]; then rm -rf $workdir/*; fi
 
-mkdir $workdir 
+mkdir $workdir 2> /dev/null
 mycd $workdir
 if [[ $(hostname) =~ 'c' ]]; then
 	echo "ERROR:  On login node - must go to compute node - quitting"
@@ -104,46 +107,15 @@ ec " >>>>  Begin subAltSky with $list of $nl images  <<<<"
 ec "------------------------------------------------------------------"
 ec "## Working on $(hostname); data on $rhost; work dir is $workdir"
 
-# command line
-osuff="_clean"       # w/o .fits extension
-args=" --inmask-suffix _mask.fits "
-conf=" --config-path $confdir  --script-path $confdir  --outname-suffix $osuff "
-comm="python $pydir/subAltSky.py -l $list $args $conf "
-
-
-# copy or link needed input files
+# copy needed files
 cp $datadir/$list .
-for f in $(cat $list); do 
-	r=${f%.fits}
-	ln -s $datadir/withSky/${r}_withSky.fits ${r}.fits
-#	ln -s $datadir/weights/${r}_weight.fits .
-	ln -s $datadir/mkSky/${r}_alt.fits .
-	ln -s $datadir/mkSky/${r}_cnt.fits .
-	ln -s $datadir/Masks/${r}_mask.fits .
-done
-
-cp $confdir/bgsub.param $confdir/swarp238.conf .
-cp $confdir/bgsub.conf $confdir/gauss_3.0_7x7.conv .
+cp $confdir/bgsub.* $confdir/gauss_3.0_7x7.conv .
 
 logfile=$datadir/$(echo $list | cut -d\. -f1).log
+nims=$(cat $list | wc -l)           # with CASU images
 
-#-----------------------------------------------------------------------------
-# Check links:
-ec "## Input file links are like:"
-imroot=$(head -1 $list | cut -d \. -f1)
-ls -lh ${imroot}*.* | tr -s ' ' | cut -d ' ' -f9-12 
-
-nims=$(ls -L v20*_0????.fits | wc -l)           # with sky images
-nsky=$(ls -L v20*_0????_alt.fits  | wc -l)      # skies to subtract
-ncnt=$(ls -L v20*_0????_cnt.fits | wc -l)       # count files
-nmks=$(ls -L v20*_0????_mask.fits | wc -l)      # masks - needed for destriping
-
-ec "## Built links to $nims images, $ncnt weights, $nsky skies, $nmks masks"
-if [[ $nims -ne $ncnt ]] || [[ $nims -ne $nsky ]] || [[ $nims -ne $nmks ]]; then
-	ec "PROBLEM: $nims, $ncnt, $nsky, $nmks not all equal ... quitting"
-	exit 5
-fi
-#-----------------------------------------------------------------------------
+# command line:
+comm="$pydir/subAltSky.py $list "
 
 ec "## Command line is: "
 ec "% $comm >> $logfile 2>&1"

@@ -5,7 +5,7 @@ Purpose:  add the casu sky to the images in the list.  The list is actually a ta
           below, which, for each file, gives the names of the support files.  As the original images already
           include some kind of mean sky level, the median level of the sky image, as computed for the unmasked
           pixels, is subtrated.  
-          Also, multiply the result image by the mask in order to put the masked pixesl to 0
+          Also, multiply the result image by the bad pixel mask in order to put the masked pixels to 0
 
    infotab is an ascii table of 7 columns containing:
    1. filename (.fits)

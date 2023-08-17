@@ -69,7 +69,7 @@ rhost=$(echo $WRK | cut -c 2-4)  # host of $WRK
 dirname=$(echo $list | cut -d\. -f1)
 whost=$(hostname)   #; echo "DEBUG: ref/work hosts: $rhost  $whost"
 
-if [[ $whost == 'n09' ]] || [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
+if [[ $whost == 'n08' ]] || [[ $whost == 'n17' ]]; then
     workdir=/${whost}data/${dirname}_$FILTER     # node with small scratch
 else                        
     workdir=/scratch/${dirname}_$FILTER          # other node

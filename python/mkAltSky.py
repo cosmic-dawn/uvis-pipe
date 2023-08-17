@@ -20,7 +20,8 @@
 # Apr.23, AMo:  
 #   removed "traditional" sky building method (using swarp/missfits), 
 #   replaced by a pure python method decribed above.
-#
+# Aug.23, AMo:
+#   added check of unequal jitter_I kwd
 #-----------------------------------------------------------------------------
 
 import math
@@ -29,7 +30,6 @@ import sys, re, os
 import astropy.io.fits as pyfits
 import numpy as np
 from subsky_sub import *
-#from time import ctime
 import time
 import datetime
 
@@ -75,7 +75,7 @@ print "#---------------------------------------------------------------------"
 #method = "subtract"
 method = "rescale"
 doRMS = False
-doVAR = True
+doVAR = False
 
 print "#####  Begin run of mkAltSky.py  ##### "
 
@@ -157,10 +157,10 @@ print "#------------------------------------------------------------------------
 newimlist=[]   
 
 # Read some keywords
-keys = ['FILTER', 'MJDATE', 'RA_DEG', 'DEC_DEG', 'OBJECT', 'EXPTIME', 'SATURATE', 'FILENAME', 'SKYLEVEL']
+keys = ['FILTER', 'MJDATE', 'RA_DEG', 'DEC_DEG', 'OBJECT', 'EXPTIME', 'SATURATE', 'FILENAME', 'SKYLEVEL', 'JITTER_I']
 data_sublist = read_header(sublist, keys)
-data_imlist = read_header(imlist, keys)
-bertin_par = bertin_param()
+data_imlist  = read_header(imlist, keys)
+bertin_par   = bertin_param()
 
 # loop on the images of the list
 for (im, ind) in zip(imlist, range(len(imlist))):

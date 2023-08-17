@@ -625,6 +625,8 @@ def get_skylist_sub_new(im, ind0, sublist, data, data_sub, options):
     final2 = [im for im in final]
 
     return final2
+
+
 def get_skylist_dr6(im, ind0, sublist, data, data_sub, options):
     ''' Updates for DR6
     Get the list of images to perform the sky subtraction
@@ -642,6 +644,7 @@ def get_skylist_dr6(im, ind0, sublist, data, data_sub, options):
     ra0 = data['RA_DEG'][ind0]
     dec0 = data['DEC_DEG'][ind0]
     date0 = data['MJDATE'][ind0]
+    jitter0 = data['JITTER_I'][ind0]
     cosdec2 = (math.cos(dec0)) ** 2
 
     if ra0 == 'Nada' or dec0 == 'Nada':
@@ -651,7 +654,7 @@ def get_skylist_dr6(im, ind0, sublist, data, data_sub, options):
     dtime_list = []
     filename_list = []
     for ind in range(len(sublist)):
-	if sublist[ind] != im and filter0 == data_sub['FILTER'][ind]:
+	if (sublist[ind] != im) and (filter0 == data_sub['FILTER'][ind]) and (jitter0 != data_sub['JITTER_I'][ind]) :
 	    d2 = (data_sub['RA_DEG'][ind] - ra0) * (data_sub['RA_DEG'][ind] - ra0) * cosdec2 + (data_sub['DEC_DEG'][ind] - dec0) * (data_sub['DEC_DEG'][ind] - dec0)
 	    if d2 <= dist2:
 		good_im.append(ind)
