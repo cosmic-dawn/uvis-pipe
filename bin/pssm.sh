@@ -175,21 +175,21 @@ mkplists() {  # build paw lists
     nl=$(ls list_paw? | wc -l)
 #    echo "## DEBUG: Built $nl paw lists from $list"
 #    echo -n "## DEBUG: len $list "; wc -l $list 
-#   echo "## DEBUG: len list_paw? "; wc -l list_paw? 
+#    echo "## DEBUG: len list_paw? "; wc -l list_paw? 
 }
 
 ec "#-----------------------------------------------------------------------------"
 ec "# Parameters from local param file $parfile "
 ec "#-----------------------------------------------------------------------------"
-ec "# - pass       $pass       3-char code for pass; 2nd char is pass number (1/2)"
-ec "# - runID      $runID      tag attached to stacks"
-ec "# - cltag      $cltag       clean for tarditional skies, cln for alt skies"
-ec "# - NewLDACS   $NewLDACS     T/F for ldac processing"
-ec "# - doHiRes    $doHiRes     T/F"
-ec "# - doImSel    $doImSel     T/F  for image selection"
-ec "# - Full       $doFull     T/F  to build full stack"
-ec "# - Season     $doSesn     T/F  to build season stacks"
-ec "# - Paws       $doPaws     T/F  to build paw stacks"
+ec "# - pass       $pass     # 3-char code for pass; 2nd char is pass number (1/2)"
+ec "# - runID      $runID      # tag attached to stacks"
+ec "# - cltag      $cltag   # clean for tarditional skies, cln for alt skies"
+ec "# - NewLDACS   $NewLDACS       # T/F for ldac processing"
+ec "# - doHiRes    $doHiRes       # T/F for hi res stacks"
+ec "# - doImSel    $doImSel       # T/F  for image selection"
+ec "# - Full       $doFull       # T/F  to build full stack"
+ec "# - Season     $doSesn       # T/F  to build season stacks"
+ec "# - Paws       $doPaws       # T/F  to build paw stacks"
 ec "#-----------------------------------------------------------------------------"
 
 #-----------------------------------------------------------------------------
@@ -265,7 +265,7 @@ if [ ${pass:1:1} -le 1 ]; then
     root=$(head $list | tail -1 | cut -c1-15)
     ex=$(ls -l origs/${root}.fits 2> /dev/null | tr -s ' ' | cut -d' ' -f10 )
 else 
-    sed -e 's/_'${cltag}.'/./' cleaned/list_cleaned > list_cleaned
+    sed -e 's/_'${cltag}.'/./' cleaned/list_${cltag}ed > list_cleaned
     list=list_cleaned 
     root=$(head $list | tail -1 | cut -c1-15)
     ex=$(ls -l cleaned/${root}_${cltag}.fits 2> /dev/null | tr -s ' ' | cut -d\  -f9 )
@@ -293,10 +293,9 @@ ec "# input ldac files ..... \$DR6/$(ls -lL $WRK/images/ldacs/${root}.ldac | cut
 ec "# scamp logs etc in .... \$DR6/$(ls -ld $scampdir | cut -d\/ -f5-9)"
 ec "# head files in ........ \$DR6/$(ls -ld $headsdir | cut -d\/ -f5-9)"
 ec "# swarp products in .... \$DR6/$(echo ${prod_dir} | cut -d\/ -f5-9)"
-#ec "# swarp products in .... \$DR6/${prod_dir}"
-ec "##----------------------------------------------------------------------------"
-ec "# New ldacs? ........... $NewLDACS"
-ec "# Do image selection ... $doImSel"
+#ec "##----------------------------------------------------------------------------"
+#ec "# New ldacs? ........... $NewLDACS"
+#ec "# Do image selection ... $doImSel"
 ec "# Do hi-res stacks ..... $doHiRes"
 ec "##----------------------------------------------------------------------------"
 ec "# ==========> Continue?   "; sleep 3   # time to check info
@@ -458,13 +457,11 @@ else
     # submit jobs and wait for them to finish
     #-----------------------------------------------------------------------------
 
-    ec "# - Submitting $njobs pscamp_s??? jobs ..."
-
-    source $IMDIR/pscamp.submit
-    ec " >>>>   wait for pscamp to finish ...   <<<<<"
+    ec "# Submit $njobs pscamp_s??? jobs ..." ; source pscamp.submit
+    ec " >>>>   wait for pscamp to finish ... first check in 1 min  <<<<<"
     
     nsec=30  # wait loop check interval
-    btime=$(date "+%s"); sleep 20   # before starting wait loop
+    btime=$(date "+%s"); sleep 60   # before starting wait loop
     while :; do              #  begin qsub wait loop for pscamp
         ndone=$(ls $IMDIR/pscamp_s???.out 2> /dev/null | wc -l)
         [ $ndone -eq $njobs ] && break               # jobs finished
@@ -591,10 +588,10 @@ fi
 #echo "    ########  QUIT HERE AFTER SCAMP FOR NOW  #######" ; exit 0
 #-----------------------------------------------------------------------------
 
-if [[ $doHiRes == 'T' ]]; then 
-    ec "## Skipping image selection for hi-res stacks"
-    doImSel=F
-fi
+#if [[ $doHiRes == 'T' ]]; then 
+#    ec "## Skipping image selection for hi-res stacks"
+#    doImSel=F
+#fi
 
 if [ "$doImSel" != "T" ]; then
     slist=$list
@@ -746,10 +743,10 @@ else
     fi
 
     if [ $doHiRes != 'T' ]; then
-        ec "# First build low-res (0.6 arcsec/pix) ${pass} substacks ..."
+        ec "# First build low-res (0.30 arcsec/pix) ${pass} substacks ..."
         resol=lr
     else
-        ec "# Now build high res (0.30 arcsec/pix) ${pass} substacks ..."
+        ec "# Now build high res (0.15 arcsec/pix) ${pass} substacks ..."
         resol=hr
     fi
 
@@ -803,7 +800,7 @@ else
 
 
     # Now loop over lists by season (pswar_s{nn}{ax}.lst 
-    ec "##  Begin loop over seasons ... "
+    ec "##  Begin loop over seasons ... "  #; ls -l list_s?? ; exit
 
     for imlist in list_s??; do 
         tail=${imlist: -3}                  # season suffix to use in script names (like s??)
@@ -836,9 +833,9 @@ else
         # -----------  Finished setting up -----------
 
         if [ $resol == 'lr' ]; then
-            nim=1200  # need 0.65 GB/file for lr stacks; 
+            nim=1000  # need 0.65 GB/file for lr stacks; 
         else
-            nim=400   # need 2.58 GB/file for hr stacks; with some luck this should work: largest split requires 0.87 TB
+            nim=250   # need 2.58 GB/file for hr stacks; with some luck this should work: largest split requires 0.87 TB
         fi
 
         for plist in list_paw[1-6]; do  
@@ -861,7 +858,7 @@ else
                     -e 's/@SUBSKY@/'$subsky'/'  -e 's|@PPN@|'$ppn'|'  -e 's|@HEADSDIR@|'$headsdir'|'  \
                     $bindir/pswarp.sh > $qfile
                 if [ ${pass:1:1} -eq 2 ]; then
-                    sed -i 's/@CLTAG@/'$cltag'/' $qfile
+                    sed -i 's/@CLTAG@/'${cltag}'/' $qfile
                 fi
             
                 ec "# Built $qfile, uses $slist with $nl images to build $outname.fits"
@@ -878,12 +875,17 @@ else
     ec "# ==> written to file 'pswarp.submit' with $njobs entries for $nfils files"
     ec "# ==> torque params: $(grep ppn= $qfile | cut -d\  -f3)"
     ec "#-----------------------------------------------------------------------------"
-    if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
+    if [ $dry == 'T' ]; then 
+		echo "   >> EXITING TEST MODE << "
+		rmdir $prod_dir            # should be empty
+		exit 3
+	fi
 
-    ec "# Submit qsub files ... ";  source pswarp.submit
-    ec " >>>>   Wait $njobs pswarp jobs ... first check in 1 min  <<<<<"
+    ec "# Submit $njobs pswarp jobs ... ";  source pswarp.submit
+    ec " >>>>   Wait for pswarp jobs ... first check in 1 min  <<<<<"
 
-    btime=$(date "+%s.%N");  sleep 60           # begin time
+    btime=$(date "+%s.%N")                      # begin time
+	sleep 60                                    # before starting wait loop
     while :; do           #  begin qsub wait loop for pswarp
         ndone=$(ls $WRK/images/pswarp_paw?_s???.out 2> /dev/null | wc -l)
         [ $njobs -eq $ndone ] && break          # jobs finished
@@ -953,7 +955,7 @@ headfile=cosmos_${resol}.head
 #stout=UVISTA_${pass}-${FILTER}_full_${resol}_${runID}          # name of full stack
 #if [ -e $WRK/images/$stout.fits ]; then 
 
-stacks_done=$(ls UVISTA_${pass}-${FILTER}_full_${resol}_${runID}.fits)
+stacks_done=$(ls UVISTA_${pass}-${FILTER}_full_${resol}_${runID}.fits 2> /dev/null)
 nstacks_done=$(cat stacks_done 2> /dev/null | wc -l)
 
 if [ $nstacks_done -ge 1 ]; then
@@ -1099,9 +1101,9 @@ else
     #          submit jobs
     #----------------------------------------------------------------------------------------#
  
-    nq=$(cat pmerge.submit | wc -l)
+    njobs=$(cat pmerge.submit | wc -l)
     ec "#-----------------------------------------------------------------------------"
-    ec "# written file 'pmerge.submit' with $nq entries "
+    ec "# written file 'pmerge.submit' with $njobs entries "
     ec "#-----------------------------------------------------------------------------"
     if [ $dry == 'T' ]; then 
         echo "   >> EXITING DRY MODE << "
@@ -1111,8 +1113,8 @@ else
         exit 3
     fi
 
-    ec "# submit qsub files ... "; source pmerge.submit
-    ec " >>>>   wait for pmerge jobs to finish ...   <<<<<"
+    ec "# Submit $njobs pmerge jobs files ... "; source pmerge.submit
+    ec " >>>>   wait for pmerge jobs to finish ... first check in 1 min  <<<<<"
     
     btime=$(date "+%s.%N")
     sleep 60              # before starting wait loop

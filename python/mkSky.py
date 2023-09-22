@@ -9,6 +9,8 @@
 #   adapated from subSky.py, removing section that does the subtraction
 # Apr.23, Amo:
 #   introduced timing info
+# Sep.23, AMo:
+#   added check of unequal jitter_I kwd
 #-----------------------------------------------------------------------------
 
 import math
@@ -141,7 +143,7 @@ print "#---------------------------------------------------------------------"
 newimlist=[]   
 
 # Read some keywords
-keys = ['FILTER', 'MJDATE', 'RA_DEG', 'DEC_DEG', 'OBJECT', 'EXPTIME', 'SATURATE', 'FILENAME']
+keys = ['FILTER', 'MJDATE', 'RA_DEG', 'DEC_DEG', 'OBJECT', 'EXPTIME', 'SATURATE', 'FILENAME', 'SKYLEVEL', 'JITTER_I']
 data_sublist = read_header(sublist, keys)
 data_imlist = read_header(imlist, keys)
 bertin_par = bertin_param()

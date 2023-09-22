@@ -25,7 +25,7 @@ def get_parser():
     parser.add_argument('--inweight-suffix', dest='inweight_suf', help='input weight suffix (def=_zeroes.fits)', type=str, default="_weight.fits")
     parser.add_argument('--outweight-suffix', dest='outweight_suf', help='output weight suffix (def=_mask.fits)', type=str, default="_mask.fits")
     parser.add_argument('-S', '--stack',  dest='stack',  help='Reference stack', type=str, default="")
-    parser.add_argument('-W', '--weight', dest='weight', help='Reference stack weight', type=str, default="")
+#    parser.add_argument('-W', '--weight', dest='weight', help='Reference stack weight', type=str, default="")
     parser.add_argument('-M', '--mask', dest='mask_file', help='bad pixel mask (def = zeroes.fits)', type=str, default="zeroes.fits")
     parser.add_argument('--threshold', dest='thresh', help='detection threshold in building masks (def = 1)', type=float, default="1.5")
     parser.add_argument('--double_mask', dest='double_mask', help='Mask from stack AND single image', action='store_true', default=True)
@@ -70,7 +70,8 @@ def main(args):
         os.system( "missfits " + im + " -c missfits.conf -SAVE_TYPE NEW -NEW_SUFFIX .temp -VERBOSE_TYPE QUIET ")
         
         # Project the mask
-        maskin = args.stack.split('.fits')[0] + '_obFlag.fits'  # here images is the input stack
+#        maskin = args.stack.split('.fits')[0] + '_obFlag.fits'  # here images is the input stack
+        maskin = args.stack           ; print maskin  #
         maskout = im.split('.fits')[0] + '.flag.miss.fits'
         #arg_thread = [maskin, maskout, im, n_ext, args]
         

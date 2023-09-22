@@ -16,12 +16,20 @@ Purpose:  add the casu sky to the images in the list.  The list is actually a ta
    6. its stack
    7. its sky
    and which is built at p1 of the pipeline
+
+Major update / AMo - sep 23: after fixing SKYSUB kwd, the FileInfo files are no longer correct.  Rather
+than fixing them, it's deemed safer to modifiy this code to read the bpm and sky files from the image
+keywords. Nevertheless, the list of images is still read from the FileInfo table in order to not have
+to modify other pipeline scripts.
+- bpm read from MIRED_MK in ext 0
+- sky read form SUBSKY in ext 4 (same for all exts.)
+- mean sky level read from SKYLEVEL or MEDSKLEV kwds (as in subAltSky.py), not recomputed
 '''
 
 import argparse
 import sys, re, os, glob
 import astropy.io.fits as pyfits
-#import numpy
+import numpy as np
 import numpy.ma as MA
 from logger_lib import setup_logger
 
@@ -63,21 +71,32 @@ def main(args):
         if line.strip()[0] == "#":
             continue
         ima = line.strip().split()[0]
-        bpm = line.strip().split()[4]
-        sky = line.strip().split()[6]
-#        print ima,bpm,sky
+#_#        bpm = line.strip().split()[4]
+#_#        sky = line.strip().split()[6]
         out = ima.replace(".fits", args.osuff)
-        logging.info("on %s with %s and %s"%(ima, bpm, sky))
 
         pyima = pyfits.open(ima)
+        bpm = pyima[0].header["IMRED_MK"]
+        sky = pyima[4].header["SKYSUB"]   # same for all extensions
+        sky = sky[10:].split('[')[0]+'s'
+        logging.info("on %s with %s and %s"%(ima, bpm, sky))
+        # open the files
         pybpm = pyfits.open(bpm)
         pysky = pyfits.open(sky)
 
         n_ext = len(pyima)
         for iext in range(n_ext - 1):
-            # Get the median of the sky (with bpm masking)
-            masked_sky = MA.array(pysky[iext + 1].data, mask=(1 - pybpm[iext + 1].data))
-            med2 = MA.median(masked_sky)
+#_#            # Get the median of the sky (with bpm masking) ... removed; not worth it; takes long time
+#_#            masked_sky = MA.array(pysky[iext + 1].data, mask=(1 - pybpm[iext + 1].data))
+#_#            med2 = MA.median(masked_sky) ; print(iext+1, med2)
+#            print(iext+1, np.mean(pysky[iext+1].data))
+#            print(iext+1, np.median(pysky[iext+1].data))
+            # Get the median sky level from casu kwd
+            # sometimes one, sometimes the other, sometines both ... va savoir!
+            try: 
+                med2 = pysky[iext+1].header["SKYLEVEL"]
+            except:
+                med2 = pysky[iext+1].header["MEDSKLEV"]
     
             pyima[iext + 1].data = pyima[iext + 1].data.astype('float32') + pysky[iext + 1].data - med2
             # finally multiply by the mask to set masked pixels to nought

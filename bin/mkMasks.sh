@@ -10,7 +10,7 @@
 # inputs: 
 # - list of images: of the form {name}_??.lst
 # procedure: 
-#   used to build ad-hoc scripts named UVISTA-DR4-RC2a_N_mkMasks_??.sh. They create a new subdir
+#   used to build ad-hoc scripts mkMasks_??.sh. They create a new subdir
 #   named mkMasks_??, copy into it the needed data and files, and run mkMasks.py.
 #   On terminating, the final products are copied back to the main directory and
 #   the directory is deleted
@@ -68,13 +68,13 @@ else
     WRK=@WRK@
 fi
 
-# mostly for testing purposes - used in shell mode
-if [ $# -eq 2 ]; then 
-    if [ $2 != 'dry' ]; then    
-        thresh=" --threshold $2 "
-        osuff="_mask_$2.fits"
-    fi
-fi
+## mostly for testing purposes - used in shell mode
+#if [ $# -eq 2 ]; then 
+#    if [ $2 != 'dry' ]; then    
+#        thresh=" --threshold $2 "
+#        osuff="_mask_$2.fits"
+#    fi
+#fi
 
 #-----------------------------------------------------------------------------
 # The REAL work ... done in temporary directory
@@ -105,9 +105,9 @@ ec "------------------------------------------------------------------"
 osuff="_mask.fits"
 # root for reference files for DR6; these are links to the DR5 full stack,
 # its weight and its obFlag
-stout=DR5_${FILTER}  
+stout=@REFMASK@   #DR5_${FILTER}  
 
-refs=" -S ${stout}.fits  -W ${stout%.fits}_weight.fits -M zeroes.fits  "
+refs=" -S ${stout}  -M zeroes.fits  "
 thresh=" --threshold 1.5 "   # in practice the default value
 args=" --inweight-suffix _weight.fits  --outweight-suffix $osuff  $thresh  \
        --conf-path $confdir  -T 6 -v NORMAL "
@@ -126,16 +126,17 @@ if [ $? -ne 0 ]; then ec "ERROR: could not build $workdir - quitting"; exit 1; f
 mycd $workdir
 
 ec "## Working on $(hostname); data on $rhost; work dir is $workdir"
-ec "## Command line is:"
-ec "% $comm "
-ec ""
-
-
 ec "## Link the needed data and config files... "
 cp $datadir/$list .
-ln -s $datadir/DR5_${FILTER}.fits .          # the DR5 stack
-ln -s $datadir/DR5_${FILTER}_weight.fits .   # its weight
-ln -s $datadir/DR5_${FILTER}_obFlag.fits .   # and its obFlag
+ln -s $datadir/${stout} .                    # the global obFlag
+
+ec "## Command line is:"
+ec "% $comm "
+ec "#  where ${stout} is: "
+ecn "#  "; ls -l ${stout} | tr -s \  | cut -d\  -f9-11
+ec ""      ;#echo drt = $dry
+
+if [ $dry == 'T' ]; then echo "   >> EXITING TEST MODE << "; exit 3; fi
 
 rm -f zeroes.fits       # just in case, before dfining new one
 lbpm=$(\ls -t /n08data/UltraVista/DR6/bpms/bpm*201902*.fits | head -1)

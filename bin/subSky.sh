@@ -172,10 +172,11 @@ else
 		ec "!!! PROBLEM: found only $nsub _clean files of $nims expected"
 		errcode=4
 	else
-		ec " >> Found $nsub _clean files - move them back to \$WRK/images/ and clean up"
+		ec " >> Found $nsub _clean files - move them back to \$WRK/images/cleaned and clean up"
 		rsync -av v20*clean.fits $WRK/images/cleaned > mv.log
 		nm=$(grep clean.fits mv.log | wc -l)
-		ec " >> ... $nm _cln.fits files moved; ready to remove $workdir"
+		ec " >> ... $nm _clean.fits files moved; ready to remove $workdir"
+		mv $logfile $WRK/images
 	fi
 fi
 
