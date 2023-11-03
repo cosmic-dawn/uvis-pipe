@@ -87,13 +87,13 @@ else
     workdir=/scratch/${dirname}_$FILTER          # other node
 fi
 
-if [ ! -d $datadir ];  then echo "ERROR: $WRK/images not found ... quitting"; exit 5; fi
-if [ ! -s $datadir/$list ]; then echo "ERROR: $list not found in $WRK/images ... quitting"; exit 5; fi
+if [ ! -d $datadir ];  then echo "ERROR: $datadir not found ... quitting"; exit 5; fi
+if [ ! -s $datadir/$list ]; then echo "ERROR: $list not found in $datadir ... quitting"; exit 5; fi
 
 nl=$(cat $datadir/$list | wc -l)
-echo "  =================================================================="
-echo "    >>>>  Begin pswarp $list on $nl files <<<<"
-echo "  ------------------------------------------------------------------"
+ec "##  =================================================================="
+ec "##    >>>>  Begin pswarp $list on $nl files <<<<"
+ec "##  ------------------------------------------------------------------"
 
 cltag=@CLTAG@   # which clean files to use
 
@@ -132,17 +132,17 @@ done
 outfile=$datadir/$outname  # to build products directly there
 ln -sf $confdir/@HEADFILE@ $outfile.head 
 logfile=$datadir/pswarp_$pawname.log   # rm $pass from name - 22.jan.22
+extras="@EXTRA@"
 
-# Build command line for DR5
 # Keep the temp file for eventual debugging
 args=" -c $confdir/swarp238.conf  -WEIGHT_SUFFIX _weight.fits  -WEIGHT_TYPE MAP_WEIGHT \
    -IMAGEOUT_NAME  ${outfile}.fits  -WEIGHTOUT_NAME ${outfile}_weight.fits   \
    -COMBINE_TYPE CLIPPED  -CLIP_SIGMA 2.8  -DELETE_TMPFILES N   \
-   -RESAMPLE Y  -RESAMPLING_TYPE LANCZOS2  \
+   -RESAMPLE Y  -RESAMPLING_TYPE LANCZOS2  ${extras}\
    -SUBTRACT_BACK $subsky  -WRITE_XML Y  -XML_NAME ${outname}.xml   "
 
 #   -BACK_SIZE 256  -BACK_FILTERSIZE 5      # equivalent to extended objects option in mk_object_mask
-   # -CLIP_WRITELOG Y  -CLIP_LOGNAME ${outname}_clip.log
+#   -CLIP_WRITELOG Y  -CLIP_LOGNAME ${outname}_clip.log
 
 # ATTN: lots of jobs aborted with  -COMBINE_BUFSIZE 16384!!  ok with 8192 (def)
 
@@ -173,6 +173,7 @@ if [ $dry == 'F' ]; then
 	else
 		ec "# swarp run successful, see $(ls -lh ${outfile}.fits | cut -d\  -f5-9) "
 		ec "# $(tail -1 $logfile) "  # line showing "Add done" and exec time 
+		mv $workdir/*.xml $datadir 
         ec "# Clean up ... delete $workdir"
 		rm -rf $workdir
 		rm -rf $workdir

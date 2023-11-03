@@ -167,11 +167,16 @@ else
 	if [ $nalt -ne $nexp ]; then     ### PROBLEM   
 		echo "PROBLEM: found only $nalt files of $nima expected - check logs"
 		echo "PROBLEM: mv products back to images/; keep workdir $workdir"
+		edate=$(date "+%s"); dt=$(($edate - $sdate))
+		echo " >>>> $module.sh finished - walltime: $dt sec  <<<<"
+		echo "------------------------------------------------------------------"
 		errcode=2
 	else                             ### SUCCESS
 		echo "# Found $nalt _alt files - move them back to images/ and clean up"
 	    # mv products back to images/
-		mv v20*_*_[ac]??.fits  $logfile.log  $logfile.err  $datadir/ 
+#		[[ -e $datadir/mkAlt ]] || mkdir $datadir/mkAlt
+		mv v20*_*_[ac]??.fits   $datadir/mkAlt
+		mv $logfile.log  $logfile.err  $datadir  # leave them in $datadir for now
 		rm v20*_0????.fits v20*_weight.fits v20*_mask.fits      # the links
 		rm -f missfits.xml bgsub.xml *.con? *.param zeroes.fits    # other stuff
 		errcode=0

@@ -152,14 +152,14 @@ bertin_par = bertin_param()
 for (im, ind) in zip(imlist, range(len(imlist))):
 
     imroot = im.split(fitsext)[0]
-    skylist = get_skylist_sub_new(im, ind, sublist, data_imlist, data_sublist, options)
+    skylist = get_skylist_dr6(im, ind, sublist, data_imlist, data_sublist, options)
 
     # check that sky list contains at least nskymin images
     if len(skylist) < options.nskies:
         print " CHECK: %s: skip - only %i images available for sky, %i required. "%(im, len(skylist), options.nskies)
         continue
 
-    print " CHECK: %s: found %2i images to build sky:"%(im, len(skylist))
+    print ">> CHECK: %s: found %2i images to build sky"%(im, len(skylist))
     newimlist.append(im)
 
 if (len(newimlist) == 0):
@@ -187,7 +187,7 @@ for (im, ind) in zip(newimlist, range(len(newimlist))):
     print " >> Begin working on %s ... "%im
     imroot = im.split(fitsext)[0]
     imhead = imroot + headext
-    skylist = get_skylist_sub_new(im, ind, sublist, data_imlist, data_sublist, options)
+    skylist = get_skylist_dr6(im, ind, sublist, data_imlist, data_sublist, options)
 
     print " >> Found %i images to build sky:"%(len(skylist))
     print " >> Copy %s header to %s "%(im, imhead)

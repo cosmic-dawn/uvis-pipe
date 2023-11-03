@@ -3,7 +3,7 @@
 #PBS -N upWgts_@FILTER@_@ID@
 #PBS -o @IDENT@.out            
 #PBS -j oe
-#PBS -l nodes=1:ppn=7,walltime=20:00:00
+#PBS -l nodes=1:ppn=5,walltime=20:00:00
 #-----------------------------------------------------------------------------
 # module: updateWeights
 # requires: intelpython, astropy.io.fits, uvis scripts and libs

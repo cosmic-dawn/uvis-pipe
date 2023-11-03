@@ -77,19 +77,23 @@ export LD_LIBRARY_PATH=/lib64:${LD_LIBRARY_PATH}
 # Processing related options read from local pssm.par file
 #-----------------------------------------------------------------------------
 
-pass=$(grep  ^pass $parfile  | tr -d ' ' | cut -d = -f2)    # code for pass
-runID=$(grep ^runID $parfile | tr -d ' ' | cut -d = -f2)    # Release name 
+pass=$(grep  ^pass $parfile  | tr -d \  | cut -d = -f2)    # code for pass
+runID=$(grep ^runID $parfile | tr -d \  | cut -d = -f2)    # Release name 
 
-NewLDACS=$(grep ^NewLDACS $parfile | tr -d ' ' | cut -d = -f2)
-doImSel=$(grep  ^doImSel $parfile  | tr -d ' ' | cut -d = -f2)
-doHiRes=$(grep  ^doHiRes $parfile  | tr -d ' ' | cut -d = -f2)
+NewLDACS=$(grep ^NewLDACS $parfile | tr -d \  | cut -d = -f2)
+doImSel=$(grep  ^doImSel $parfile  | tr -d \  | cut -d = -f2)
+doHiRes=$(grep  ^doHiRes $parfile  | tr -d \  | cut -d = -f2)
 
-cltag=$(grep  ^cl_tag $parfile | tr -d ' ' | cut -d = -f2)
+cltag=$(grep  ^cl_tag $parfile | tr -d \  | cut -d = -f2)
 
-doFull=$(grep ^doFull $parfile | tr -d ' ' | cut -d = -f2)
-doSesn=$(grep ^doSesn $parfile | tr -d ' ' | cut -d = -f2)
-doPaws=$(grep ^doPaws $parfile | tr -d ' ' | cut -d = -f2)
+doFull=$(grep ^doFull $parfile | tr -d \  | cut -d = -f2)
+doSesn=$(grep ^doSesn $parfile | tr -d \  | cut -d = -f2)
+doPaws=$(grep ^doPaws $parfile | tr -d \  | cut -d = -f2)
 
+doDR4=$(grep ^doDR4 $parfile | tr -d \" | cut -d = -f2)
+doDR5=$(grep ^doDR5 $parfile | tr -d \  | cut -d = -f2)
+
+extras=$(grep ^extras $parfile | tr -d \" | cut -d = -f2)
 #-----------------------------------------------------------------------------
 # Some not so variable variables
 #-----------------------------------------------------------------------------
@@ -190,6 +194,9 @@ ec "# - doImSel    $doImSel       # T/F  for image selection"
 ec "# - Full       $doFull       # T/F  to build full stack"
 ec "# - Season     $doSesn       # T/F  to build season stacks"
 ec "# - Paws       $doPaws       # T/F  to build paw stacks"
+if [ ${#extras} -gt 1 ]; then
+	ec "# - extras    $extras   # extra params for swarp"
+fi
 ec "#-----------------------------------------------------------------------------"
 
 #-----------------------------------------------------------------------------
@@ -231,9 +238,10 @@ norigs=$(cat list_origs | wc -l)
 naccep=$(cat list_accepted | wc -l)
 nldacs=$(cat list_ldacs 2> /dev/null | wc -l)
 nwghts=$(cat list_weights | wc -l)
+nheads=$(cat list_heads | wc -l)
 
-if [ $naccep -eq $nldacs ]; then 
-    ec "CHECK: found $naccep images, $nwghts weights, $nldacs ldac files ... " 
+if [ $naccep -le $nldacs ]; then 
+    ec "CHECK: found $naccep images, $nwghts weights, $nldacs ldac files, $nheads head files ... " 
     ec "CHECK: ... seems ok to continue with first pass."
 else
     ec "!!! ATTN: Number of images, weights, ldacs not the same ..."
@@ -680,36 +688,22 @@ fi
 
 #-----------------------------------------------------------------------------
 # check for final products:
-#-----------------------------------------------------------------------------
-
-##### NOT SURE WHAT WAS THE PURPOSE OF THIS CHECK HERE ....
-## ls UVISTA_${pass}-${FILTER}_full_${resol}*.fits 2> /dev/null | grep -v weight > stacks_done.txt
-## nstacks_done=$(cat stacks_done.txt | wc -l)
-## if [ $nstacks_done -ge 1 ]; then
-##  ec "## ATTN: found $nstacks_done full stack(s) ..."
-##  cat stacks_done.txt
-##  askuser
-## else
-##  ec "# CHECK: NO full stacks found ... "
-## fi
-#######################################################
-# name of directory for substacks products
-#prod_dir=${prod_dir}_${resol}_${runID}
-
-# see if there are the expected number of scripts there
-nscripts=$(ls $prod_dir/pswarp*.sh 2> /dev/null | wc -l)
-
-#-----------------------------------------------------------------------------
 # check if swarp alreay done:
 #-----------------------------------------------------------------------------
-
+# see if there are the expected number of scripts there
+nscripts=$(ls $prod_dir/pswarp*.sh 2> /dev/null | wc -l)
 nsubima=$(ls -1 $prod_dir/substack_paw?_s???.fits 2> /dev/null | wc -l)   
-#echo $prod_dir $nscripts $nsubima ; exit
+#echo "## In $prod_dir: found $nsubima substacks for $nscripts scripts"  #;  exit
 
 if [[ $nsubima -eq $nscripts  &&  $nsubima -gt 0 ]]; then   # || [ -e $stout.fits ]; then 
     ec "CHECK: Found $nsubima substacks for $nscripts expected - swarp done ..."
     ec "#-----------------------------------------------------------------------------"
-else 
+else 	
+	echo "## In $prod_dir: found $nsubima substacks for $nscripts scripts"  # ; exit
+	echo "## ATTN: $(($nscripts - $nsubima)) substacks missing ... "
+	askuser
+
+	# Continuing ...
     nn=$(cat $slist 2> /dev/null | wc -l)     # number of images to swarp
 
     ec "##  Prepare swarp pass ${pass} using $slist with $nn images"
@@ -725,7 +719,7 @@ else
     rm -f pswarp_paw?_s???.out  pswarp_paw?_s???.log  pswarp.submit
 
     # look for old temporary work dirs that were not removed
-    ls -d /*/psw*_$FILTER 2> /dev/null > odirs.tmp
+    ls -d /scratch??/psw*_$FILTER /n??data/psw*_$FILTER 2> /dev/null > odirs.tmp
     ndirs=$(cat odirs.tmp | wc -l ) 
     if [ $ndirs -gt 0 ]; then
         ec "### ATTN: Found $ndirs pswarp work directories ... see -/images/odirs.tmp".
@@ -759,6 +753,8 @@ else
         subsky=N                             # for pass2 DO NOT subtract sky
     fi
 
+    # optional extra parameters for swarp:
+
     ec "#-----------------------------------------------------------------------------"
     ec "# output like: $stout"
     ec "# head-file:   $headfile"
@@ -766,7 +762,11 @@ else
     ec "# input list:  $slist"     #; wc $list
     ec "# ... begins with $(head -1 $slist)"
     ec "# hi/lo resol: $resol"
+	if [ ${#extras} -gt 1 ]; then
+		ec "# ATTN: using extra params: $extras"
+	fi
     ec "#-----------------------------------------------------------------------------"
+	
     ec "# ==========> Continue?   "; sleep 3   # time to check info
 
     # each file, when resampled, produces 16 resampled files of 21MB each (lr) / 84 MB 
@@ -837,7 +837,7 @@ else
         else
             nim=250   # need 2.58 GB/file for hr stacks; with some luck this should work: largest split requires 0.87 TB
         fi
-
+		
         for plist in list_paw[1-6]; do  
             nl=$(cat $plist | wc -l)
             ppaw=$(echo $plist | cut -d\_ -f2)       # NEW tmporary name for full paw
@@ -852,13 +852,13 @@ else
                 # ---------------------- Local run by sublist ----------------------
                 
                 qfile="pswarp_$paw.sh"; touch $qfile; chmod 755 $qfile
-                sed -e 's|@NODE@|'$node'|'  -e 's|@IDENT@|'$PWD/pswarp'|'  -e 's|@DRY@|'$dry'|'  \
-                    -e 's|@FILTER@|'$FILTER'|' -e 's|@LIST@|'$slist'|'  -e 's|@WRK@|'$WRK'|' \
-                    -e 's|@PAW@|'$paw'|'  -e 's|@PASS@|'${pass:1:1}'|'  -e 's|@HEADFILE@|'$headfile'|'  \
-                    -e 's/@SUBSKY@/'$subsky'/'  -e 's|@PPN@|'$ppn'|'  -e 's|@HEADSDIR@|'$headsdir'|'  \
-                    $bindir/pswarp.sh > $qfile
+                sed -e "s|@NODE@|${node}|"  -e "s|@IDENT@|${PWD}/pswarp|"  -e "s|@DRY@|${dry}|"  \
+                    -e "s|@FILTER@|${FILTER}|" -e "s|@LIST@|${slist}|"  -e "s|@WRK@|${WRK}|" \
+                    -e "s|@PAW@|${paw}|"  -e "s|@PASS@|${pass:1:1}|"  -e "s|@HEADFILE@|${headfile}|"  \
+                    -e "s/@SUBSKY@/${subsky}/"  -e "s|@PPN@|${ppn}|"  -e "s|@HEADSDIR@|${headsdir}|"  \
+                    -e "s/@EXTRA@/ ${extras}/"  $bindir/pswarp.sh > $qfile
                 if [ ${pass:1:1} -eq 2 ]; then
-                    sed -i 's/@CLTAG@/'${cltag}'/' $qfile
+                    sed -i "s/@CLTAG@/${cltag}/" $qfile
                 fi
             
                 ec "# Built $qfile, uses $slist with $nl images to build $outname.fits"
@@ -930,7 +930,7 @@ else
     chmod 644 substack_*.* pswarp_paw*.log pswarp*.out
 
     mv -f pswarp*.sh pswarp.warn pswarp_paw?_s???.???  list_s?? $prod_dir
-    mv substack_paw?_s???.fits  substack_paw?_s???_weight.fits  $prod_dir
+    mv substack_paw?_s???.*  substack_paw?_s???_weight.fits  $prod_dir
     cp $confdir/swarp238.conf $prod_dir
     rm -f pswarp.submit substack*.head  # name built in script
 
@@ -942,18 +942,15 @@ fi
 #----------------------------------------------------------------------------------------#
 
 if [ $doHiRes != 'T' ]; then
-    ec "# Merge low-res (0.6 arcsec/pix) ${pass} substacks into final stacks"
+    ec "# Merge low-res (0.30 arcsec/pix) ${pass} substacks into final stacks"
     resol=lr
 else
-    ec "# Merge high res (0.30 arcsec/pix) ${pass} substacks into final stacks"
+    ec "# Merge high res (0.15 arcsec/pix) ${pass} substacks into final stacks"
     resol=hr
 fi
 
 headfile=cosmos_${resol}.head   
 #########    ATTN: need option for 48k stacks    #########
-
-#stout=UVISTA_${pass}-${FILTER}_full_${resol}_${runID}          # name of full stack
-#if [ -e $WRK/images/$stout.fits ]; then 
 
 stacks_done=$(ls UVISTA_${pass}-${FILTER}_full_${resol}_${runID}.fits 2> /dev/null)
 nstacks_done=$(cat stacks_done 2> /dev/null | wc -l)
@@ -976,13 +973,14 @@ else
     ec "#-----------------------------------------------------------------------------"
 
     # make links to substacks
+	ec "## Build links to substacks"
     ln -sf $prod_dir/substack_paw?_s???.fits .
     ln -sf $prod_dir/substack_paw?_s???_weight.fits .
     
     # check num of substacks vs num expected:
     ls -1 substack_paw?_s???.fits > pmerge_full.lst 2> /dev/null # if season stack are available
     nfnd=$(cat pmerge_full.lst | wc -l)                   # number found
-    nexp=$(ls $prod_dir/pswarp_paw?_s???.sh | wc -l)     # number expected
+    nexp=$(ls $prod_dir/pswarp_paw?_s???.sh | wc -l)      # number expected
     
     if [ $nfnd -ne $nexp ]; then
         ec "ERROR: found $nfnd substacks for $nexp expected from pswarp*.sh files .... "
@@ -1098,6 +1096,53 @@ else
     fi
 
     #----------------------------------------------------------------------------------------#
+    #          Merge substacks to build DR4-like and DR5-like stacks
+    #----------------------------------------------------------------------------------------#
+
+	if [ $doDR4 == "T" ]; then 
+	    stout=UVISTA_${pass}-${FILTER}_dr4_${resol}_${runID}
+        ec "# Merge seasons 1-7 substacks into $stout ..."
+        ec "#-----------------------------------------------------------------------------"
+
+	    ls -1 substack_paw?_s0[1-7]?.fits > pmerge_dr4.lst 2> /dev/null
+	    nfnd=$(cat pmerge_dr4.lst | wc -l)    # number found
+	    ec "## Merge $nfnd substacks into pseudo DR4: $stout ..."
+	    
+	    qfile="pmerge_dr4.sh"; touch $qfile; chmod 755 $qfile
+	    sed -e 's|@NODE@|'$node'|'   -e 's|@IDENT@|'$PWD/pmerge_dr4'|'  -e 's|@DRY@|'$dry'|'  \
+	    	-e 's|@FILTER@|'$FILTER'|' -e 's|@LIST@|'pmerge_dr4.lst'|'  -e 's|@WRK@|'$WRK'|'  \
+	    	-e 's|@STOUT@|'$stout'|'   -e 's|@TAG@|'dr4'|'   -e 's|@PASS@|'$pass'|' \
+			$bindir/pmerge.sh > ./$qfile
+	    
+	    ec "# Built $qfile with $nfnd entries"
+	    ec "#-----------------------------------------------------------------------------"
+	    echo "qsub $qfile" >> pmerge.submit
+	fi
+
+	if [ $doDR5 == "T" ]; then 
+	    stout=UVISTA_${pass}-${FILTER}_dr5_${resol}_${runID}
+        ec "# Merge seasons 1-10 substacks into $stout ..."
+        ec "#-----------------------------------------------------------------------------"
+
+	    ls -1 substack_paw?_s0[1-9]?.fits substack_paw?_s10?.fits > pmerge_dr5.lst 2> /dev/null
+	    nfnd=$(cat pmerge_dr5.lst | wc -l)    # number found
+	    ec "## Merge $nfnd substacks into pseudo DR5: $stout ..."
+	    
+	    qfile="pmerge_dr5.sh"; touch $qfile; chmod 755 $qfile
+	    sed -e 's|@NODE@|'$node'|'   -e 's|@IDENT@|'$PWD/pmerge_dr5'|'  -e 's|@DRY@|'$dry'|'  \
+	    	-e 's|@FILTER@|'$FILTER'|' -e 's|@LIST@|'pmerge_dr5.lst'|'  -e 's|@WRK@|'$WRK'|'  \
+	    	-e 's|@STOUT@|'$stout'|'   -e 's|@TAG@|'dr5'|'   -e 's|@PASS@|'$pass'|' \
+			$bindir/pmerge.sh > ./$qfile
+	    
+	    ec "# Built $qfile with $nfnd entries"
+	    ec "#-----------------------------------------------------------------------------"
+	    echo "qsub $qfile" >> pmerge.submit
+	fi
+
+
+
+
+    #----------------------------------------------------------------------------------------#
     #          submit jobs
     #----------------------------------------------------------------------------------------#
  
@@ -1153,6 +1198,12 @@ else
         if [ -h $f ]; then rm $f; fi
     done
     mv pmerge_*.*  $prod_dir
+	rm pmerge.submit
+
+	cd $WRK
+	for f in images/UVISTA_${pass}-${FILTER}_dr*${resol}_${runID}*.fits; do
+		$pydir/write_pssm_params.py $f
+	done
 
     ec "#-----------------------------------------------------------------------------"
     ec "# Finished merging; moved scripts, lists and logs to $(echo $prod_dir | cut -d\/ -f6,7)"

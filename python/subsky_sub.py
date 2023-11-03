@@ -632,7 +632,8 @@ def get_skylist_dr6(im, ind0, sublist, data, data_sub, options):
     Get the list of images to perform the sky subtraction
     2023.apr:
     - delete some commeted lines;
-    - check sky bgd values in subsilt and remove outliers
+    - check sky bgd values in sublist and remove outliers
+    2023.aug: add jitter kwd
     '''
 
     numpy.set_printoptions(precision=4)

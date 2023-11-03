@@ -265,7 +265,6 @@ cd $WRK
 if [ $# -ge 1 ] && [ $1 = 'xxx' ]; then
     echo " DUMMY step .... nothing to do"
 
-#-----------------------------------------------------------------------------------------------
 #@@ ------------------------------------------------------------------------------------
 #@@  UltraVista pipeline data processing steps:
 #@@ ------------------------------------------------------------------------------------
@@ -719,12 +718,12 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
             rm estats
         fi
 
-        # Look for unbuilt regs files ... don't know origin of problem ...
-        cd images
-        for f in $(cat $list); do 
-            if [ ! -e regs/${f%.fits}.reg ]; then echo $f; fi
-        done > missed.reg
-        nn=$(cat missed.reg | wc -l)
+#        # Look for unbuilt regs files ... don't know origin of problem ...
+#        cd images
+#        for f in $(cat $list); do 
+#            if [ ! -e regs/${f%.fits}.reg ]; then echo $f; fi
+#        done > missed.reg
+#        nn=$(cat missed.reg | wc -l)
 #        if [ $nn -gt 0 ]; then
 #            ec "## Try to build $nn missing reg files ... "
 #            for f in $(cat missed.reg); do $pydir/ldac2region.py ldacs/${f%.fits}_orig.ldac; done
@@ -792,6 +791,29 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
         else
             ec "# All expected files found"
             rm qFits.missed
+        fi
+
+        # Build summary tables
+        ec "# Build summary tables for : Nstars, FWHM, ELLI, DESC and PROBs "
+        # from input file
+        grep ^medi   qFits/v20*_qFits.dat | cut -d\/ -f2 | cut -c1-15,33-299 > MSKY.dat
+        grep ^\ std  qFits/v20*_qFits.dat | cut -d\/ -f2 | cut -c1-15,33-299 > SRMS.dat
+        grep ^desc   qFits/v20*_qFits.dat | cut -d\/ -f2 | cut -c1-15,33-299 > DESC.dat
+        grep ^casu   qFits/v20*_qFits.dat | cut -d\/ -f2 | cut -c1-15,33-299 > CASU.dat
+        # from PSFEx xml file
+        grep ^fwhm   qFits/v20*_qFits.dat | cut -d\/ -f2 | cut -c1-15,33-299 > FWHM.dat
+        grep ^elli   qFits/v20*_qFits.dat | cut -d\/ -f2 | cut -c1-15,33-299 > ELLI.dat
+        grep ^Nacc   qFits/v20*_qFits.dat | cut -d\/ -f2 | cut -c1-15,33-299 > Nacc.dat
+        # from SExtractor for scamp
+        grep ^Nstars qFits/v20*_qFits.dat | cut -d\/ -f2 | cut -c1-15,33-299 > Nstr.dat
+        grep ^satlev qFits/v20*_qFits.dat | cut -d\/ -f2 | cut -c1-15,33-299 > SATU.dat
+        grep PROBLEM DESC.dat > PROBs.dat
+
+        npbs=$(cat PROBs.dat | wc -l)
+        if [ $npbs -gt 0 ]; then
+            ec "#### ATTN: found $npbs files with high noise in top chips, see PROBs.dat ####"
+        else
+            rm -f PROBs.dat
         fi
 
         # Now clean up .....
@@ -886,7 +908,6 @@ elif [ $1 = 'p1' ]; then      # P1: convert to WIRCam, fix flats, qFits, flag sa
         ec "# $nbad files with bad PSF found and removed ... "
 
         best=$(grep v20 PSFsel.dat | sort -k2,3 | head -1)
-#####        ec "# Select highest quality image: $best"
         ### TBD: write ??? kwd to indicate ref photom image for scamp
 
         ls -1 v20*_0????.ldac > list_ldacs  ; nldacs=$(cat list_ldacs | wc -l)
@@ -972,7 +993,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
     # 
     #----------------------------------------------------------------------------------------------#
 
-    nmsk=$(ls -1 Masks/v20*_mask.fits 2> /dev/null | wc -l ) # 	echo $nmsk $nimages
+    nmsk=$(ls -1 Masks/v20*_mask.fits 2> /dev/null | wc -l )  #; echo $nmsk $nimages
 
     if [ -e mkMasks.log ] && [ $nmsk -ge $nimages  ]; then
         ec "CHECK: found mkMasks logfile and $nmsk _mask files ... "
@@ -980,15 +1001,6 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         ec "#-----------------------------------------------------------------------------"
     else     
         rcurr=R11
-
-###        if [ -e list_special ]; then
-###            list=list_special;  ec "####    ATTN: Using special list     ####"
-###			nexp=25    #useSpecial=True
-###        else
-###            list=list_images
-###			nexp=450   #useSpecial=False
-###        fi
-###        nimages=$(cat $list | wc -l)
 
         ec "## - R11: mkMasks.sh: build sky-subtraction masks for $nimages images "
         ec "#-----------------------------------------------------------------------------"
@@ -998,7 +1010,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         # ATTN: exec time ~2.5min/file; ==> should not go over nexp=500 to maintain
         #       some margin, given the mkMask walltime of 24 hrs
         # ==> rate is ~24 jobs/hr, depending on machine
-#		if [ $useSpecial == "True" ]; then nexp=25; else nexp=450; fi
+		if [ $useSpecial == "True" ]; then nexp=25; else nexp=450; fi
 
         nts=$(( $nimages/$nexp +1 ))   # num of jobs
 
@@ -1029,7 +1041,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
             [ $ndone -eq $nts ] && break          # jobs finished
 
             running=$(qstat -au moneti | grep Masks_${FILTER}_ | grep \ R\  | wc -l)
-            fdone=$(ls -1 /*/mkMasks_??_${FILTER}/v20*_0????_mask.fits v20*_0????_mask.fits 2> /dev/null | wc -l)
+            fdone=$(ls -1 /[ns]*/mkMasks_??_${FILTER}/v20*_0????_mask.fits v20*_0????_mask.fits 2> /dev/null | wc -l)
             ftodo=$(($nimages - $fdone)) 
 			if [ $running -gt 0 ]; then
 				nsec=$(( 30*${ftodo}/${running} ))
@@ -1241,6 +1253,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
 		cd withSky ; ls v20*Sky.fits > ../list_wSky; cd -
         mv addSky_??.* withSky            # scripts and inputs
         rm sky_20*.fits bpm*[0-9].fits    # links to ../calib/sky and bpm files
+		rm zeroes.fits bpm*link.fits
         rm v20*_0????.fits                # links to orig images in origs dir
 
         ec "# addSky checks complete; no problem found ... continue" 
@@ -1325,12 +1338,6 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
                     cat $f      >> $olist      # append curent list ...
                     head -20 $g >> $olist      # append first 20 from next list
                 fi
-				# remove "fixed offset" images (have same jitter_i)
-				j1=$(grep $f jitter.dat)
-				nj1=$(echo j1 | wc -l)
-				if ( nj1 -eq 1); then    # file is in jitter.dat
-					pp1=$(echo $j1 | cut -d\  -f2) #   ; echo $pp1
-				fi
             done
         else                               # look for nearby frames in full list.
             ec "# Build skylsts using partial list ..."
@@ -1372,11 +1379,18 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         echo " ----------  Begin monitoring  ----------"
         while :; do             # qsub wait loop for mkSky
             ndone=$(ls $WRK/images/mkSky_??.out 2> /dev/null | wc -l)
+			if [ $ndone -gt 1 ]; then
+				nn=$(grep EXIT\ STAT $WRK/images/mkSky_??.out | grep -v 0$ | wc -l)
+				if [ $nn -gt 1 ]; then
+					echo "### ATTN:  $nn .out files with non-0 exit code"
+				fi
+			fi
             [ $ndone -eq $nts ] && break          # jobs finished
             
-            running=$(qstat -au moneti | grep mkSky_${FILTER}_ | grep \ R\  | wc -l)
-            fdone=$(ls -1 /*/mkSky*_${FILTER}/v20*_sky.fits ./v20*_sky.fits 2> /dev/null | wc -l)
-            ftodo=$(($nimages - $fdone)) 
+			running=$(qstat -au moneti | grep mkSky_${FILTER}_ | grep \ R\  | wc -l)
+            fdone=$(ls -1 /[ns]*/mkSky_??_${FILTER}/v20*_sky.fits v20*_sky.fits 2> /dev/null | wc -l)
+			fskip=$(grep skip /[ns]*/mkSky_??_${FILTER}/mkSky_??.log mkSky_??.log 2> /dev/null | wc -l)
+            ftodo=$(($nimages - $fdone - $fskip)) 
 			if [ ${running} -ge 1 ]; then
 				nsec=$(( 200*${ftodo}/${running} ))
 			else                 ##  case all jobs qeued
@@ -1440,9 +1454,12 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         nn=$(grep -v 257M tmplist | wc -l )
         if [ $nn -ne 0 ]; then
             ec "CHECK: found $nn incomplete files (size != 257MB): "
-            grep -v 257M tmplist
+            head tmplist
             askuser
+		else
+			rm tmplist
         fi
+
         chmod 644 v20*_sky.fits mkSky_??.???
 		ls v20*_sky.fits > list_skies
 
@@ -1450,6 +1467,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         if [ ! -d mkSky ]; then mkdir mkSky; fi
         mv mkSky_??.* v20*_sky.fits mkSky
 		cp list_skies mkSky
+		rm tmplist
 
         ec "# mkSky checks complete; no problem found ... continue"
         ec "#-----------------------------------------------------------------------------"
@@ -1484,16 +1502,14 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
 			nn=$(cat $list 2> /dev/null | wc -l)
 #			echo "[DEBUG] list is $list with $nn entries"
 			if [ $nn -eq 0 ]; then 
-				cd mkAlt
-				ls v20*_alt.fits 2> /dev/null| sed 's/_alt//' > ../$list 
+				cd mkSky
+				ls v20*_sky.fits 2> /dev/null| sed 's/_sky//' > ../$list 
 				cd -
 				nn=$(cat $list 2> /dev/null | wc -l)
 				ec "#### ATTN: rebuilt $list with $nn entries"
 			fi
         fi
-        nimages=$(cat $list | wc -l)
-
-        nim=$(cat $list | wc -l)
+        nimages=$(cat $list | wc -l) ; nim=$(cat $list | wc -l)
         ec "## - R14: updateWeights.sh: to exclude area where no sky is calculated for $nim images"  
         ec "#-----------------------------------------------------------------------------"
         nout=$(ls -1 updateWeights_??.out 2> /dev/null | wc -l)
@@ -1511,7 +1527,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         ln -sf Masks/v20*_mask.fits .
         ln -sf weights/v20*_weight.fits .
 
-		nexp=999
+		nexp=499
         if [ $nimages -lt 420 ]; then nts=7; else nts=$(($nimages/$nexp + 1)); fi
         split -n l/$nts $list --additional-suffix='.lst' updateWeights_
         
@@ -1561,7 +1577,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         mv updateWeights_??.* updateWeights
 
         # rm all links to images, weights, etc ... separately to avoid arg list too long
-        rm v20*_weight.fits 
+        rm v20*_weight.fits 		# probably not needed here ...
         rm v20*_sky.fits
         rm v20*_mask.fits zeroes.fits # v20*.head
 
@@ -1575,8 +1591,6 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
 		fi
         if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
     fi
-
-##  FOR DR6: actual sky subtraction and destriping remains in P3
 
     #----------------------------------------------------------------------------------------#
     #       Actual sky subtraction, destriping, and large-scale bgd removal
@@ -1619,8 +1633,8 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
 			nn=$(cat $list 2> /dev/null | wc -l)
 
 			if [ $nn -eq 0 ]; then 
-				cd mkAlt
-				ls v20*_alt.fits 2> /dev/null| sed 's/_alt//' > $list
+				cd mkSky
+				ls v20*_sky.fits 2> /dev/null| sed 's/_sky//' > $list
 				cd -
 				nn=$(cat $list 2> /dev/null | wc -l)
 				ec "#### ATTN: rebuilt $list with $nn entries"
@@ -1640,11 +1654,8 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         fi
 
         ec "# ==> Build processing scripts for $nimages files from $list:"
-        nexp=1000        # exec time: 45 sec/file  ==> 6-7 hr per chunk
+        nexp=500        # exec time: 45 sec/file  ==> 6-7 hr per chunk
         if [ $nimages -lt 450 ]; then nts=$(($nimages/20 +1)); else nts=$(($nimages/$nexp + 1)); fi
-
-
-
         split -n l/$nts $list --additional-suffix='.lst' subSky_
         
         for l in subSky_??.lst; do
@@ -1655,7 +1666,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
                 sed -e 's|@NODE@|'$node'|'  -e 's|@LIST@|'$l'|'  -e 's|@DRY@|0|' \
                     -e 's|@IDENT@|'$PWD/subSky_$id'|'   -e 's|@FILTER@|'$FILTER'|' \
                     -e 's|@ID@|'$id'|'  -e 's|@WRK@|'$WRK'|'  \
-                    $bindir/subSky.sh > $qfile    ######## chgd to AltSky
+                    $bindir/subSky.sh > $qfile
             
                 ec "# Built $qfile with $nl entries"
                 echo "qsub $qfile; sleep 1" >> subSky.submit
@@ -1676,8 +1687,10 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
             ndone=$(ls $WRK/images/subSky_??.out 2> /dev/null | wc -l)
             [ $ndone -eq $nts ] && break          # jobs finished
             
+            ls /[ns]*/subSky*${FILTER}/v20*_clean.fits $WRK/images/cleaned/v20*_clean.fits 2> /dev/null > x
+			# a little manipulation to exclude files present twice during rsync
+			fdone=$(awk -F/ '{print $NF}' x | sort -u | wc -l) ; rm x
             running=$(qstat -au moneti | grep subSky_${FILTER}_ | grep \ R\  | wc -l) 
-            fdone=$(ls /*/subSky*${FILTER}/v20*clean.fits $WRK/images/v20*_clean.fits 2> /dev/null | wc -l)
             ftodo=$(($nimages - $fdone))
 			if [ $running -gt 0 ]; then
 				nsec=$(( 30*${ftodo}/${running} ))
@@ -1712,18 +1725,17 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         if [ $nn -ne 0 ]; then
             ec "CHECK: found $nn errors in torque .out files .... see subSky.err "
             askuser
+		else
+			rm subSky.err
         fi
 
         # build general logfile: join subSky_??.log files
         grep -e Begin\ work -e output subSky_??.log > subSky.log
-
-        chmod 644 subSky_??.???
-
-        if [ ! -d cleaned ]; then mkdir cleaned; fi
-        mv v20*_${cltag}.fits subSky_??.* cleaned           # and other subSky files
+        mv subSky_??.* cleaned           # and other subSky files
         # leave global subSky.log to check if done
 
 		cd cleaned/
+		chmod 444 cleaned/v20*_*_${cltag}.fits subAlt_??.*
         ls v20*_${cltag}.fits > ../list_cleaned
 		cd ..
         ncleaned=$(cat list_cleaned | wc -l)
@@ -1732,7 +1744,7 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
 		if [ -e list_special ]; then
 			ec "# ATTN: removing list_special, continuing with full list"
 			dd=$(date "+%y%m%d")
-		    mv list_special list_special_clean_$dd
+		    mv list_special list_special_subSky_$dd
 		fi
 
         ec "CHECK: subSky.sh done, $ncleaned clean images moved to dir cleaned/"
@@ -1742,7 +1754,8 @@ elif [ $1 = 'p3' ]; then      # P3: build object masks, add CASU sky, compute be
         ec "# Number of files for which sky was built ..... $(cat list_skies    | wc -l)"
         ec "# Number of files processed and cleaned ....... $(cat list_cleaned  | wc -l)"
 #        ec "#-----------------------------------------------------------------------------"
-        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
+#        if [ $int == "T" ]; then ec "# >>> Interactive mode:" ; askuser; fi
+		rm *.submit
     fi
     
     cd $WRK  
@@ -1768,7 +1781,7 @@ elif [[ $1 == 'help' ]] || [[ $1 == '-h'  ]] ; then  # help, -h: list pipeline o
 elif [ $1 = 'plists' ]; then  # plists: rebuild paw lists and check
 
     mycd $WRK/images
-	mkplists list_images
+    ec " >> Rebuild list_images and list_paw? ...  Not implemented here"
 
   ## ec "##-----------------------------------------------------------------------------"
 

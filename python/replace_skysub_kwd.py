@@ -11,6 +11,7 @@ SYNTAX: replace_skysub_kwd.py fix_file
 METHOD:
 
 AMo - 19.sep.23
+AMo - 9.oct.23: fixed bug which set sky ext[1] to all exts
 -----------------------------------------------------------------------------
 '''
 
@@ -32,11 +33,11 @@ for line in lines:
     
     for n in range(1,len(sys.argv)):
         pima = fits.open(ima+".fits", mode='update')
+#        pima = fits.open(ima+".fits")
         hd = pima[0].header
         for e in range(1,17):
-            sss = "Done with {:}.fit[{:}]".format(newsky, n) 
-            if (e == 1): 
-                print(ima, pima[e].header['SKYSUB'], " replaced with", newsky)
-#                print(sss)
-            pima[e].header['SKYSUB'] = (sss)
+            sss = "Done with {:}.fit[{:}]".format(newsky, e) 
+            if (e == 11): 
+                print(ima, pima[e].header['SKYSUB'], " replaced with", sss)
+            pima[e].header['SKYSUB'] = sss
         pima.close(output_verify='silentfix+ignore')

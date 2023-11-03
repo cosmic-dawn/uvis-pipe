@@ -1,6 +1,11 @@
 #!/bin/sh
 #-----------------------------------------------------------------------------
 # Run SEx and scamp to perform astrometry check on selected stacks
+# NB: if filenames begin with '/', the path is stripped from the name and the
+# products are written in the current dir.  Otherwise the path is maintained
+# and the products are written in the same dir as the file. ==>
+# SYNTAX: astrocheck.sh /path/to/file*names {dry}
+# in dry mode the commands are printed out but no action is taken.
 #-----------------------------------------------------------------------------
 if [[ ${@: -1} =~ 'dry' ]]; then
 	DRY=T
@@ -36,18 +41,18 @@ for f in ${@:1:$nfiles}; do
 
 	filt=$FILTER 
 
-	if [[ ${name:0:8} == "substack" ]]; then    	# for substacks
+	if [[ ${name} =~ "substack" ]]; then    	# for substacks
 		base=$f
 		labl=$(echo $name | cut -d \_ -f2-4)
 #		echo $base ; echo $name; echo $labl #; exit
-	elif [[ ${name:13:4} == "full" ]]; then         # for full stacks
+	elif [[ ${name} =~ "full" ]]; then         # for full stacks
 		base=$root#                              ; echo "$base      $name"
 		labl=$(echo $name | cut -d\_ -f2-3)
 		echo "$name      $labl"
-	elif [[ ${name:12:2} == "_s" ]]; then          # for season stacks
+	elif [[ ${name} =~ "_s" ]]; then           # for season stacks
 		base=$root
 		labl=$(echo $name | cut -d\_ -f2-3)
-	elif [[ ${name:12:4} == "_paw" ]]; then          # for season stacks
+	elif [[ ${name} == "_paw" ]]; then         # for paw stacks
 		base=$root
 		labl=$(echo $name | cut -d\_ -f2-3)
 	fi

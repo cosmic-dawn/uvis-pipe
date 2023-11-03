@@ -71,13 +71,13 @@ def main(args):
         if line.strip()[0] == "#":
             continue
         ima = line.strip().split()[0]
-#_#        bpm = line.strip().split()[4]
-#_#        sky = line.strip().split()[6]
         out = ima.replace(".fits", args.osuff)
 
         pyima = pyfits.open(ima)
         bpm = pyima[0].header["IMRED_MK"]
-        sky = pyima[4].header["SKYSUB"]   # same for all extensions
+        # NB. the sky filename is the same for all extensions; the extension number 
+        #     in the SKYSUB kwd is not used here, only the file name.
+        sky = pyima[4].header["SKYSUB"]   
         sky = sky[10:].split('[')[0]+'s'
         logging.info("on %s with %s and %s"%(ima, bpm, sky))
         # open the files
@@ -86,9 +86,6 @@ def main(args):
 
         n_ext = len(pyima)
         for iext in range(n_ext - 1):
-#_#            # Get the median of the sky (with bpm masking) ... removed; not worth it; takes long time
-#_#            masked_sky = MA.array(pysky[iext + 1].data, mask=(1 - pybpm[iext + 1].data))
-#_#            med2 = MA.median(masked_sky) ; print(iext+1, med2)
 #            print(iext+1, np.mean(pysky[iext+1].data))
 #            print(iext+1, np.median(pysky[iext+1].data))
             # Get the median sky level from casu kwd
@@ -99,6 +96,7 @@ def main(args):
                 med2 = pysky[iext+1].header["MEDSKLEV"]
     
             pyima[iext + 1].data = pyima[iext + 1].data.astype('float32') + pysky[iext + 1].data - med2
+            # Not sure this final step is useful, but it's been there from the beginning.
             # finally multiply by the mask to set masked pixels to nought
             pyima[iext + 1].data = pyima[iext + 1].data * pybpm[iext + 1].data
         pyima.writeto(out, overwrite=True)

@@ -167,12 +167,13 @@ for (im, ind) in zip(imlist, range(len(imlist))):
 
     imroot = im.split(fitsext)[0]
     skylist = get_skylist_dr6(im, ind, sublist, data_imlist, data_sublist, options)
+
     # check that sky list contains at least nskymin images
     if len(skylist) < options.nskies:
         print " CHECK: %s: skip - only %i images available for sky, %i required. "%(im, len(skylist), options.nskies)
         continue
 
-    print(">> Source file {:}: found {:-2n} files to build sky: ".format(im, len(skylist)))
+    print(">> CHECK: {:}: found {:-2n} files to build sky".format(im, len(skylist)))
     newimlist.append(im)
 
 if (len(newimlist) == 0):
